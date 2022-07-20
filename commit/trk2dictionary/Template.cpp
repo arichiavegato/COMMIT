@@ -153,7 +153,6 @@ void* T2DKernel ( void * structure ) {
     int idx = pyValues->threadID;
     int offset = pyValues->offset[idx];
     string OUTPUT_path( pyValues->path_out );
-    // FILE* fp = pyValues->fp;
 
 
     filename = OUTPUT_path + "/dictionary_TRK_norm_" + to_string(idx) + ".dict";  
