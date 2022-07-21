@@ -463,13 +463,17 @@ int trk2dictionary(
     minFiberLen   = min_fiber_len;
     maxFiberLen   = max_fiber_len;
 
-    P.resize( nReplicas );  // for blur
+    // P.resize( nReplicas );  (?)
 
 
-    // creo i threads
-    for( int i=0; i<n_threads; i++ ) {
-        values.threadID = i;
+    for(int j=1; j <= n_threads; j++){
+        values.threadID[j] = j;
+        pthread_create( &tin[j], NULL, inizializza, (void*)&values );
+    }
 
+    // Aspetto la terminazione
+    for( int i=1; i<=n_threads ;i++ ){
+            pthread_join( tin[i],NULL );
     }
 
     // chiudo il file in lettura
