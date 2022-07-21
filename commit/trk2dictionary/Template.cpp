@@ -58,28 +58,25 @@ class segInVoxKey
 };
 
 
-
+// Values for threads
  struct Parameters {
-
+    
+    // To stor partial information 
     vector<unsigned int>    partialICSegments;
     vector<unsigned int>    partialFibers;
     vector<unsigned int>    partialECSegments;
     vector<unsigned int>    partialECVoxels;
 
-    char*           fp;
+    // For files
+    char*           fp;             // Name of the tractrogram file
     char*           path_out;
-    vector<int>     offset;         // per fseek per l'apertura del file.
-                                    // vector perchè ogni thread dovrà partire da punti differenti del file
-                                    // quindi, ogni thread avrà il suo ( sarà 1000 + qualcosa )
-    
-    int             threadID;       // variabile inizializzata dal for con cui vengono creati i threads
-                                    // occhio che comincia da 1, 0 e' il master 
+    vector<int>     offset;         // For file descriptor
+    int             threadID;   
+    int             spt;            // number of Streamlines per Thread, new n_counts
 
-    int             n_scalar;       // vengono usate solo da read_streamline
+    // from cython 
+    int             n_scalar;
     int             n_properies;
-                                    
-    int             spt;            // streamline per thread da usare al posto di n_count
-
     float*          ptrPEAKS;
     int             Np;
     float           vf_THR; 
@@ -108,10 +105,10 @@ pthread_t tin[n_threads];
 vector<map<segKey,float> >              FiberSegments;
 vector<float>                           FiberLen;      // length of a streamline
 vector<float>                           FiberLenTot;   // length of a streamline (considering the blur)
-Vector< Vector< Vector<double> > >      P;  // In read functions aggiungere poi l'accesso in base all'id del thread
+// Vector< Vector< Vector<double> > >      P;  // In read functions aggiungere poi l'accesso in base all'id del thread
 
 
-// Dichiarazione variabili costanti 
+// Global variables
 Vector<int>     dim;        
 Vector<float>   pixdim;
 float*          ptrMASK;
@@ -123,6 +120,12 @@ int             isTRK;
 int             hdr = 1000;
 
 
+bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vector<double>& vmin, Vector<double>& vmax, double & t);
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable );
+void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
+unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np );
+unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM );
+
 
 // ========================================
 //  Kernel function
@@ -130,41 +133,43 @@ int             hdr = 1000;
 
 void* T2DKernel ( void * structure ) {
 
-    //cast della struttura
     struct Parameters * pyValues;
     pyValues = ( struct Parameters * ) structure;  
 
-
-    // Parametri del singolo thread
+    // threads variables
     float           fiber[3][MAX_FIB_LEN];
     float           fiberNorm;
     unsigned int    N, v, partialICSegments = 0, partialFibers = 0; 
     unsigned short  o;
     unsigned char   kept;
-    string          filename;
+    string          filename;   // for the output files
 
     map<segKey,float>::iterator         it;
     map<segInVoxKey,float>              FiberNorm;
     map<segInVoxKey,float>::iterator    itNorm;
     segInVoxKey                         inVoxKey;
+    
+    Vector<Vector<double>  P;
 
-
-    // Variabili utili se pratiche
+    
+    // From structure
     int idx = pyValues->threadID;
     int offset = pyValues->offset[idx];
     string OUTPUT_path( pyValues->path_out );
-
+    int n_counts = pyValues->spt;
+    
 
     filename = OUTPUT_path + "/dictionary_TRK_norm_" + to_string(idx) + ".dict";  
     FILE* pDict_TRK_norm = fopen(filename.c_str(),"wb");
 
+    
      if ( !pDict_TRK_norm )
     {
         printf( "\n[trk2dictionary] Unable to create output files" );
         return 0;
     }
 
-    // Apertura files
+    // Open of the output files
     filename = OUTPUT_path + "/dictionary_IC_f_" + to_string(idx) + ".dict";          
     FILE* pDict_IC_f = fopen(filename.c_str(),"wb");
     
@@ -187,9 +192,8 @@ void* T2DKernel ( void * structure ) {
     FILE* pDict_TRK_kept = fopen(filename.c_str(),"wb");   
 
 
-    // open del file
-     int offset_val = pyValues->offset[idx]; 
-     int Offset = offset_val+ hdr;
+    // Recupero l'offset per il filedescriptor
+    offset = offset + hdr;  // + 1000 skip of the header
 
     FILE* fpTractogram = fopen(pyValues->fp,"rb"); // open for reading
     if (fpTractogram == NULL) return 0;
@@ -197,8 +201,6 @@ void* T2DKernel ( void * structure ) {
 
 
     // Inizio dell'iterazione
-    int n_counts = pyValues->spt;
-
     ProgressBar PROGRESS( n_counts );
     PROGRESS.setPrefix("     ");
     for(int f=0; f<n_counts ;f++)
