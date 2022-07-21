@@ -121,7 +121,7 @@ int             hdr = 1000;
 
 
 bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vector<double>& vmin, Vector<double>& vmax, double & t);
-void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable );
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector< vector< double > >& P );
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM );
@@ -213,7 +213,7 @@ void* T2DKernel ( void * structure ) {
             N = read_fiberTCK( fpTractogram, fiber , pyValues->ptrToVOXMM );
 
         fiberForwardModel( fiber, N, pyValues->nReplicas, pyValues->ptrBlurRho, pyValues->ptrBlurAngle, 
-                           pyValues->ptrBlurWeights, pyValues->ptrBlurApplyTo[f], pyValues->ptrHashTable, idx );
+                           pyValues->ptrBlurWeights, pyValues->ptrBlurApplyTo[f], pyValues->ptrHashTable, idx, P );
 
         kept = 0;
 
@@ -485,7 +485,7 @@ int trk2dictionary(
 /********************************************************************************************************************/
 /*                                                 fiberForwardModel                                                */
 /********************************************************************************************************************/
-void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, int idx )
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, int idx, vector< vector< double > >& P  )
 {
     static Vector<double> S1, S2, S1m, S2m, P_old, P_int, q, n, nr, qxn, qxqxn;
     static Vector<double> vox, vmin, vmax, dir1, dir2;
