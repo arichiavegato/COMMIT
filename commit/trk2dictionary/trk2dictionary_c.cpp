@@ -8,8 +8,8 @@
 #include <numpy/arrayobject.h>
 #include <math.h>
 
-// #include <thread>
-// #include <mutex>
+#include <thread>
+#include <mutex>
 
 
 #define MAX_FIB_LEN 10000
@@ -58,16 +58,16 @@ class segInVoxKey
 
 
 // global variables (to avoid passing them at each call)
-/* thread_local */ std::map<segKey,float>          FiberSegments;
+thread_local std::map<segKey,float>          FiberSegments;
 float                           FiberLen;      // length of a streamline
 float                           FiberLenTot;   // length of a streamline (considering the blur)
-/* thread_local */ std::vector< Vector<double> >   P;
+thread_local std::vector< Vector<double> >   P;
 
-/* Da aggiungere a globali
+// Da aggiungere a globali
 unsigned int    totICSegments = 0;
 unsigned int    totFibers = 0;
 unsigned int    totECSegments = 0;
-unsigned int    totECVoxels = 0; */
+unsigned int    totECVoxels = 0;
 
 
 Vector<int>     dim;
@@ -76,24 +76,26 @@ float*          ptrMASK;
 float           fiberShiftXmm, fiberShiftYmm, fiberShiftZmm;
 bool            doIntersect;
 float           minSegLen, minFiberLen, maxFiberLen;
-
-/* 
+ 
 // Other variables for the management of the threads
 unsigned int threads_count = std::thread::hardware_concurrency(); // Returns the number of concurrent threads supported by the implementation
-vector<thread> threads;
-bool par; // This will be set to true if threads_count > 0, otherwise this will be false and the code will run sequentially
+std::vector<thread> threads;
+// bool par; // This will be set to true if threads_count > 0, otherwise this will be false and the code will run sequentially
 std::mutex IC_read, IC_pDict, IC_write, IC_kept ; // Mutexes to manage the access to the file
-std::mutex EC_write, EC_count;
-*/ 
+std::mutex EC_write, EC_count; 
 
 
 // --- Functions Definitions ----
 bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vector<double>& vmin, Vector<double>& vmax, double & t);
-void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector<vector<double>> &P );
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, std::vector<Vector<double>>& P );
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
-unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<vector<double>> &P );
-unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM, vector<vector<double>> &P );
-// int/void function par
+unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, std::vector<Vector<double>>& P );
+unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM, std::vector<Vector<double>>& P );
+int T2D( FILE* fpTractogram, int isTRK, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
+double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
+FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
+FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
+FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, std::vector<Vector<double>>& P )
 
 
 
