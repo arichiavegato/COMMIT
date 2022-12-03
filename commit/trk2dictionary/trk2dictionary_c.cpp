@@ -92,7 +92,7 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nRepl
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<Vector<double>>& P );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM, vector<Vector<double>>& P );
-int T2D( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
+int T2D( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
 FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
@@ -180,7 +180,7 @@ int trk2dictionary(
 
     // Calling to the core function
     for( int i = 0; i<threads_count; i++ ){
-        threads.push_back( thread( T2D, fpTractogram, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM, nReplicas, ptrBlurRho, ptrBlurAngle, ptrBlurWeights,
+        threads.push_back( thread( T2D, fpTractogram, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM, ptrBlurRho, ptrBlurAngle, ptrBlurWeights,
         ptrBlurApplyTo, ptrTDI, pDict_IC_f, pDict_IC_v , pDict_IC_o , pDict_IC_len , pDict_TRK_norm, pDict_TRK_len, pDict_TRK_lenTot, pDict_TRK_kept,
         ptrPEAKS, Np, vf_THR, ptrPeaksAffine, ECix, ECiy, ECiz, pDict_EC_v, pDict_EC_o, ptrHashTable ) );
     }
@@ -213,7 +213,7 @@ int trk2dictionary(
 
 // ============= PARALLEL Trk2Dictionary ================
 
-int T2D ( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
+int T2D ( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
 FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
