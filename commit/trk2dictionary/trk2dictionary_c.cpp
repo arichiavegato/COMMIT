@@ -62,7 +62,7 @@ class segInVoxKey
 thread_local map<segKey,float>          FiberSegments;
 float                           FiberLen;      // length of a streamline
 float                           FiberLenTot;   // length of a streamline (considering the blur)
-thread_local vector< Vector<double> >   P;
+// thread_local vector< Vector<double> >   P;
 
 // Da aggiungere a globali
 unsigned int    totICSegments = 0;
@@ -92,11 +92,11 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nRepl
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<Vector<double>>& P );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM, vector<Vector<double>>& P );
-int T2D( FILE* fpTractogram, int isTRK, int n_count, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
+int T2D( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
 FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
-FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>& P );
+FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable );
 
 
 
@@ -112,7 +112,7 @@ int trk2dictionary(
 {
     // Variables
     string    filename;
-    string    OUTPUT_path(path_out);    
+    string    OUTPUT_path(path_out);       
 
 
     // Set the global variables defined above. 
@@ -128,7 +128,7 @@ int trk2dictionary(
     minFiberLen   = min_fiber_len;
     maxFiberLen   = max_fiber_len;
 
-    P.resize( nReplicas ); // I can leave this here, but then I need to pass P to all functions
+    // P.resize( nReplicas ); // I can leave this here, but then I need to pass P to all functions
 
     // Then -> check the type of the file extension
     int isTRK;
@@ -180,9 +180,9 @@ int trk2dictionary(
 
     // Calling to the core function
     for( int i = 0; i<threads_count; i++ ){
-        threads.push_back( thread( T2D, fpTractogram, isTRK, n_count, n_scalars, n_properties, ptrToVOXMM, nReplicas, ptrBlurRho, ptrBlurAngle, ptrBlurWeights,
+        threads.push_back( thread( T2D, fpTractogram, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM, nReplicas, ptrBlurRho, ptrBlurAngle, ptrBlurWeights,
         ptrBlurApplyTo, ptrTDI, pDict_IC_f, pDict_IC_v , pDict_IC_o , pDict_IC_len , pDict_TRK_norm, pDict_TRK_len, pDict_TRK_lenTot, pDict_TRK_kept,
-        ptrPEAKS, Np, vf_THR, ptrPeaksAffine, ECix, ECiy, ECiz, pDict_EC_v, pDict_EC_o, ptrHashTable, P ) );
+        ptrPEAKS, Np, vf_THR, ptrPeaksAffine, ECix, ECiy, ECiz, pDict_EC_v, pDict_EC_o, ptrHashTable ) );
     }
 
     for( int i = 0; i<threads_count; i++ ) {
@@ -213,11 +213,11 @@ int trk2dictionary(
 
 // ============= PARALLEL Trk2Dictionary ================
 
-int T2D ( FILE* fpTractogram, int isTRK, int n_count, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
+int T2D ( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
 FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
-FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>& P  )
+FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
 {
 
     // --- Computing the IC comparments ---
@@ -228,6 +228,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>&
     unsigned int   N, v;
     unsigned short o;
     unsigned char  kept;
+    vector<Vector<double>>   P; 
 
     map<segKey,float>::iterator it;
     map<segInVoxKey,float> FiberNorm;
@@ -235,6 +236,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>&
 
     segInVoxKey inVoxKey;    
 
+    P.resize(nReplicas);
 
     // Iterate over streamlines
 
