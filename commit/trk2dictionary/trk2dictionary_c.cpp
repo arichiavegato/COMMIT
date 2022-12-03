@@ -11,8 +11,9 @@
 #include <thread>
 #include <mutex>
 
-
 #define MAX_FIB_LEN 10000
+
+using namespace std;
 
 
 // Class to store the segments of one fiber
@@ -58,10 +59,10 @@ class segInVoxKey
 
 
 // global variables (to avoid passing them at each call)
-thread_local std::map<segKey,float>          FiberSegments;
+thread_local map<segKey,float>          FiberSegments;
 float                           FiberLen;      // length of a streamline
 float                           FiberLenTot;   // length of a streamline (considering the blur)
-thread_local std::vector< Vector<double> >   P;
+thread_local vector< Vector<double> >   P;
 
 // Da aggiungere a globali
 unsigned int    totICSegments = 0;
@@ -78,24 +79,24 @@ bool            doIntersect;
 float           minSegLen, minFiberLen, maxFiberLen;
  
 // Other variables for the management of the threads
-unsigned int threads_count = std::thread::hardware_concurrency(); // Returns the number of concurrent threads supported by the implementation
-std::vector<thread> threads;
+unsigned int threads_count = thread::hardware_concurrency(); // Returns the number of concurrent threads supported by the implementation
+vector<thread> threads;
 // bool par; // This will be set to true if threads_count > 0, otherwise this will be false and the code will run sequentially
-std::mutex IC_read, IC_pDict, IC_write, IC_kept ; // Mutexes to manage the access to the file
-std::mutex EC_write, EC_count; 
+mutex IC_read, IC_pDict, IC_write, IC_kept ; // Mutexes to manage the access to the file
+mutex EC_write, EC_count; 
 
 
 // --- Functions Definitions ----
 bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vector<double>& vmin, Vector<double>& vmax, double & t);
-void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, std::vector<Vector<double>>& P );
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector<Vector<double>>& P );
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
-unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, std::vector<Vector<double>>& P );
-unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM, std::vector<Vector<double>>& P );
+unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<Vector<double>>& P );
+unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM, vector<Vector<double>>& P );
 int T2D( FILE* fpTractogram, int isTRK, int n_scalars, int n_properties, float* ptrToVOXMM, int nReplicas,
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
 FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
-FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, std::vector<Vector<double>>& P )
+FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>& P )
 
 
 
@@ -110,8 +111,8 @@ int trk2dictionary(
 )
 {
     // Variables
-    std::string    filename;
-    std::string    OUTPUT_path(path_out);    
+    string    filename;
+    string    OUTPUT_path(path_out);    
 
 
     // Set the global variables defined above. 
@@ -216,7 +217,7 @@ int T2D ( FILE* fpTractogram, int isTRK, int n_scalars, int n_properties, float*
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
 FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
-FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> &P  )
+FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>& P  )
 {
 
     // --- Computing the IC comparments ---
@@ -228,11 +229,11 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> 
     unsigned short o;
     unsigned char  kept;
 
-    std::map<segKey,float>::iterator it;
-    std::map<segInVoxKey,float> FiberNorm;
-    std::map<segInVoxKey,float>::iterator itNorm;
+    map<segKey,float>::iterator it;
+    map<segInVoxKey,float> FiberNorm;
+    map<segInVoxKey,float>::iterator itNorm;
 
-    segInVoxKey         inVoxKey;    
+    segInVoxKey inVoxKey;    
 
 
     // Iterate over streamlines
@@ -240,7 +241,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> 
     // ProgressBar PROGRESS( n_count );
     // PROGRESS.setPrefix("     ");    // Fighetterie
     
-    while( fpTractogram.good() )  //for(int f=0; f<n_count; f++) 
+    while( !fpTractogram.eof() )  //for(int f=0; f<n_count; f++) 
     {
         // PROGRESS.inc();
 
@@ -268,7 +269,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> 
                     v = it->first.x + dim.x * ( it->first.y + dim.y * it->first.z );
                     o = it->first.o;
 
-                    IC_pDict.lock()
+                    IC_pDict.lock();
                     
                     fwrite( &totFibers,      4, 1, pDict_IC_f );
                     fwrite( &v,              4, 1, pDict_IC_v );
@@ -295,7 +296,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> 
                 totICSegments += FiberSegments.size();
                 totFibers++;
                 
-                IC_write.unlock()
+                IC_write.unlock();
 
                 kept = 1;
             }
@@ -322,11 +323,11 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> 
         int            ox, oy;
 
     //  PROGRESS.reset( dim.z );
-        for(iz=0; iz<dim.z ;iz++)
+        for(iz=0; iz<dim.z; iz++)
         {
             // PROGRESS.inc();
-            for(iy=0; iy<dim.y ;iy++)
-            for(ix=0; ix<dim.x ;ix++)
+            for(iy=0; iy<dim.y; iy++)
+            for(ix=0; ix<dim.x; ix++)
             {
                 // check if in mask previously computed from IC segments
                 if ( ptrTDI[ iz + dim.z * ( iy + dim.y * ix ) ] == 0 ) continue;
@@ -349,7 +350,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> 
                     ec_seg.y  = iy;
                     ec_seg.z  = iz;
                     atLeastOne = 0;
-                    for(id=0; id<Np ;id++)
+                    for(id=0; id<Np; id++)
                     {
                         if ( norms[id]==0 || norms[id] < vf_THR*peakMax ) continue; // peak too small, don't consider it
 
@@ -391,11 +392,11 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<vector<double>> 
                         atLeastOne = 1;
                     }
                     if ( atLeastOne>0 )
-                        EC_count.lock()
+                        EC_count.lock();
                         
                         totECVoxels++;
                         
-                        EC_count.unlock()
+                        EC_count.unlock();
                 }
             }
         }
@@ -439,7 +440,7 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nRepl
     n.Normalize();
 
     // duplicate first point and move to corresponding grid locations
-    for(k=0; k<nReplicas ;k++)
+    for(k=0; k<nReplicas; k++)
     {
         if ( !doApplyBlur && k>0 )
             continue;
@@ -707,7 +708,7 @@ bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vect
 // ----- Reading Functions ----------
 
 // Read a fiber from file .trk
-unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<vector<double>> &P )
+unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<Vector<double>>& P )
 {
     int N;
     fread((char*)&N, 1, 4, fp);
@@ -730,7 +731,7 @@ unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int n
 }
 
 // Read a fiber from file .tck
-unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToVOXMM, vector<vector<double>> &P )
+unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToVOXMM, vector<Vector<double>>& P )
 {
     int i = 0;
     float P[3];
