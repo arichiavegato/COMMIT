@@ -414,7 +414,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
 /********************************************************************************************************************/
 /*                                                 fiberForwardModel                                                */
 /********************************************************************************************************************/
-void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector<vector<double>> &P )
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector<Vector<double>> &P )
 {
     static Vector<double> S1, S2, S1m, S2m, P_old, P_int, q, n, nr, qxn, qxqxn;
     static Vector<double> vox, vmin, vmax, dir1, dir2;
@@ -718,13 +718,13 @@ unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int n
     if ( N >= MAX_FIB_LEN || N <= 0 )
         return 0;
 
-    float P[3];
+    float J[3];
     for(int i=0; i<N; i++)
     {
-        fread((char*)P, 1, 12, fp);
-        fiber[0][i] = P[0];
-        fiber[1][i] = P[1];
-        fiber[2][i] = P[2];
+        fread((char*)J, 1, 12, fp);
+        fiber[0][i] = J[0];
+        fiber[1][i] = J[1];
+        fiber[2][i] = J[2];
         fseek(fp,4*ns,SEEK_CUR);
     }
     fseek(fp,4*np,SEEK_CUR);
@@ -733,18 +733,18 @@ unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int n
 }
 
 // Read a fiber from file .tck
-unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToVOXMM, vector<Vector<double>>& P )
+unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToVOXMM )
 {
     int i = 0;
-    float P[3];
-    fread((char*)P, 1, 12, fp);
-    while( !(isnan(P[0])) && !(isnan(P[1])) &&  !(isnan(P[2])) )
+    float J[3];
+    fread((char*)J, 1, 12, fp);
+    while( !(isnan(J[0])) && !(isnan(J[1])) &&  !(isnan(J[2])) )
     {
-        fiber[0][i] = P[0] * ptrToVOXMM[0] + P[1] * ptrToVOXMM[1] + P[2] * ptrToVOXMM[2]  + ptrToVOXMM[3];
-        fiber[1][i] = P[0] * ptrToVOXMM[4] + P[1] * ptrToVOXMM[5] + P[2] * ptrToVOXMM[6]  + ptrToVOXMM[7];
-        fiber[2][i] = P[0] * ptrToVOXMM[8] + P[1] * ptrToVOXMM[9] + P[2] * ptrToVOXMM[10] + ptrToVOXMM[11];
+        fiber[0][i] = J[0] * ptrToVOXMM[0] + J[1] * ptrToVOXMM[1] + J[2] * ptrToVOXMM[2]  + ptrToVOXMM[3];
+        fiber[1][i] = J[0] * ptrToVOXMM[4] + J[1] * ptrToVOXMM[5] + J[2] * ptrToVOXMM[6]  + ptrToVOXMM[7];
+        fiber[2][i] = J[0] * ptrToVOXMM[8] + J[1] * ptrToVOXMM[9] + J[2] * ptrToVOXMM[10] + ptrToVOXMM[11];
         i++;
-        fread((char*)P, 1, 12, fp);
+        fread((char*)J, 1, 12, fp);
     }
 
     return i;
