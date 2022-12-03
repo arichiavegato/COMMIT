@@ -96,7 +96,7 @@ int T2D( FILE* fpTractogram, int isTRK, int n_scalars, int n_properties, float* 
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
 FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
-FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>& P )
+FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable, vector<Vector<double>>& P );
 
 
 
