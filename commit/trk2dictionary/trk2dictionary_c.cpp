@@ -107,7 +107,7 @@ int trk2dictionary(
     float* ptrPEAKS, int Np, float vf_THR, int ECix, int ECiy, int ECiz,
     float* _ptrMASK, float* ptrTDI, char* path_out, int c, double* ptrPeaksAffine,
     int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo,
-    float* ptrToVOXMM, short* ptrHashTable
+    float* ptrToVOXMM, unsigned short ndirs, short* ptrHashTable
 )
 {
     // Variables
