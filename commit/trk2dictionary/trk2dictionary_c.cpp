@@ -70,6 +70,7 @@ unsigned int    totFibers = 0;
 unsigned int    totECSegments = 0;
 unsigned int    totECVoxels = 0;
 
+int f=0;
 
 Vector<int>     dim;
 Vector<float>   pixdim;
@@ -82,7 +83,7 @@ float           minSegLen, minFiberLen, maxFiberLen;
 unsigned int threads_count = thread::hardware_concurrency(); // Returns the number of concurrent threads supported by the implementation
 vector<thread> threads;
 // bool par; // This will be set to true if threads_count > 0, otherwise this will be false and the code will run sequentially
-mutex IC_read, IC_pDict, IC_write, IC_kept ; // Mutexes to manage the access to the file
+mutex IC_read, IC_pDict, IC_write, IC_kept, ICcounter ; // Mutexes to manage the access to the file
 mutex EC_write, EC_count; 
 
 
@@ -90,13 +91,14 @@ mutex EC_write, EC_count;
 bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vector<double>& vmin, Vector<double>& vmax, double & t);
 void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector<Vector<double>>& P );
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
-unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<Vector<double>>& P );
-unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM, vector<Vector<double>>& P );
-int T2D( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
+unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np );
+unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM );
+
+// --- Parallel functions ---
+void ICpar( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
-FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
-FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable );
+FILE* pDict_TRK_kept, short* ptrHashTable );
 
 
 
@@ -175,14 +177,14 @@ int trk2dictionary(
     filename = OUTPUT_path+"/dictionary_EC_o.dict";        FILE* pDict_EC_o   = fopen( filename.c_str(),   "wb" );
     
 
-    printf( "\n   \033[0;32m* Exporting IC and EC compartments:\033[0m\n" );
+    printf( "\n   \033[0;32m* Exporting IC compartments:\033[0m\n" );
 
 
     // Calling to the core function
     for( int i = 0; i<threads_count; i++ ){
-        threads.push_back( thread( T2D, fpTractogram, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM, ptrBlurRho, ptrBlurAngle, ptrBlurWeights,
+        threads.push_back( thread( ICpar, fpTractogram, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM, ptrBlurRho, ptrBlurAngle, ptrBlurWeights,
         ptrBlurApplyTo, ptrTDI, pDict_IC_f, pDict_IC_v , pDict_IC_o , pDict_IC_len , pDict_TRK_norm, pDict_TRK_len, pDict_TRK_lenTot, pDict_TRK_kept,
-        ptrPEAKS, Np, vf_THR, ptrPeaksAffine, ECix, ECiy, ECiz, pDict_EC_v, pDict_EC_o, ptrHashTable ) );
+        ptrHashTable ) );
     }
 
     for( int i = 0; i<threads_count; i++ ) {
@@ -191,8 +193,9 @@ int trk2dictionary(
 
 
    printf("     [ %d streamlines kept, %d segments in total ]\n", totFibers, totICSegments );
-   printf("     [ %d voxels, %d segments ]\n", totECVoxels, totECSegments );
+   // printf("     [ %d voxels, %d segments ]\n", totECVoxels, totECSegments );
    
+
    fclose( fpTractogram );
    fclose( pDict_TRK_norm );
    fclose( pDict_IC_f );
@@ -203,21 +206,20 @@ int trk2dictionary(
    fclose( pDict_TRK_lenTot );
    fclose( pDict_TRK_kept );
    
-   fclose( pDict_EC_v );
-   fclose( pDict_EC_o );
+   // fclose( pDict_EC_v );
+   // fclose( pDict_EC_o );
    
    return 1;
 
 }
 
 
-// ============= PARALLEL Trk2Dictionary ================
+// ============= PARALLEL Trk2Dictionary FUNCTIONS ================
 
-int T2D ( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
+void ICpar( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
 FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
-FILE* pDict_TRK_kept, float* ptrPEAKS, int Np, float vf_THR, double* ptrPeaksAffine, int ECix, int ECiy, int ECiz,
-FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
+FILE* pDict_TRK_kept, short* ptrHashTable )
 {
 
     // --- Computing the IC comparments ---
@@ -229,6 +231,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
     unsigned short o;
     unsigned char  kept;
     vector<Vector<double>>   P; 
+    int count;
 
     map<segKey,float>::iterator it;
     map<segInVoxKey,float> FiberNorm;
@@ -243,20 +246,25 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
     // ProgressBar PROGRESS( n_count );
     // PROGRESS.setPrefix("     ");    // Fighetterie
     
-    for(int f=0; f<n_count; f++) 
+    while( f != n_count ) // for(int f=0; f<n_count; f++) 
     {
         // PROGRESS.inc();
 
         IC_read.lock();
         
         if ( isTRK )
-            N = read_fiberTRK( fpTractogram, fiber, n_scalars, n_properties, P );
+            N = read_fiberTRK( fpTractogram, fiber, n_scalars, n_properties );
         else
-            N = read_fiberTCK( fpTractogram, fiber , ptrToVOXMM, P );
-        
+            N = read_fiberTCK( fpTractogram, fiber , ptrToVOXMM );
+
+            count = f;
+            f++;
+
         IC_read.unlock();
 
-        fiberForwardModel( fiber, N, nReplicas, ptrBlurRho, ptrBlurAngle, ptrBlurWeights, ptrBlurApplyTo[f], ptrHashTable, P );
+        fiberForwardModel( fiber, N, nReplicas, ptrBlurRho, ptrBlurAngle, ptrBlurWeights, ptrBlurApplyTo[count], ptrHashTable, P );
+
+
 
         kept = 0;
 
@@ -294,11 +302,13 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
                 fwrite( &fiberNorm,   1, 4, pDict_TRK_norm );   // actual length considered in optimization
                 fwrite( &FiberLen,    1, 4, pDict_TRK_len );    // length of the streamline
                 fwrite( &FiberLenTot, 1, 4, pDict_TRK_lenTot ); // length of the streamline (considering the blur)
-                
+                IC_write.unlock();
+
+                ICcounter.lock();
                 totICSegments += FiberSegments.size();
                 totFibers++;
                 
-                IC_write.unlock();
+                ICcounter.unlock();
 
                 kept = 1;
             }
@@ -308,7 +318,9 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
         fwrite( &kept, 1, 1, pDict_TRK_kept );
         IC_kept.unlock();
     }
+}   
 
+/*
     // PROGRESS.close();
 
     // --- EC Compartement ---
@@ -406,7 +418,7 @@ FILE* pDict_EC_v, FILE* pDict_EC_o, short* ptrHashTable )
     }
 
     return 1;
-}
+} */
 
 
 
@@ -710,7 +722,7 @@ bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vect
 // ----- Reading Functions ----------
 
 // Read a fiber from file .trk
-unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np, vector<Vector<double>>& P )
+unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np )
 {
     int N;
     fread((char*)&N, 1, 4, fp);
