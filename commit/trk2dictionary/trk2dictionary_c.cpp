@@ -7,16 +7,13 @@
 #include "ProgressBar.h"
 #include <numpy/arrayobject.h>
 #include <math.h>
-
-#include <thread>
-#include <mutex>
+#include <iostream>
+#include <fstream>
 
 #define MAX_FIB_LEN 10000
 
-using namespace std;
 
-
-// Class to store the segments of one fiber
+// CLASS to store the segments of one fiber
 class segKey
 {
     public:
@@ -56,21 +53,11 @@ class segInVoxKey
     }
 };
 
-
-
 // global variables (to avoid passing them at each call)
-thread_local map<segKey,float>          FiberSegments;
+std::map<segKey,float>          FiberSegments;
 float                           FiberLen;      // length of a streamline
 float                           FiberLenTot;   // length of a streamline (considering the blur)
-// thread_local vector< Vector<double> >   P;
-
-// Da aggiungere a globali
-unsigned int    totICSegments = 0;
-unsigned int    totFibers = 0;
-unsigned int    totECSegments = 0;
-unsigned int    totECVoxels = 0;
-
-int f=0;
+std::vector< Vector<double> >   P;
 
 Vector<int>     dim;
 Vector<float>   pixdim;
@@ -78,31 +65,17 @@ float*          ptrMASK;
 float           fiberShiftXmm, fiberShiftYmm, fiberShiftZmm;
 bool            doIntersect;
 float           minSegLen, minFiberLen, maxFiberLen;
- 
-// Other variables for the management of the threads
-unsigned int threads_count = thread::hardware_concurrency(); // Returns the number of concurrent threads supported by the implementation
-vector<thread> threads;
-// bool par; // This will be set to true if threads_count > 0, otherwise this will be false and the code will run sequentially
-mutex IC_read, IC_pDict, IC_write, IC_kept, ICcounter ; // Mutexes to manage the access to the file
-mutex EC_write, EC_count; 
 
-
-// --- Functions Definitions ----
 bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vector<double>& vmin, Vector<double>& vmax, double & t);
-void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector<Vector<double>>& P );
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable );
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable );
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM );
+unsigned int Pars( FILE* fp );
 
-// --- Parallel functions ---
-void ICpar( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
-double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
-FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
-FILE* pDict_TRK_kept, short* ptrHashTable );
-
-
-
-// --- Function called by Cython file ----
+// =========================
+// Function called by CYTHON
+// =========================
 int trk2dictionary(
     char* str_filename, int data_offset, int Nx, int Ny, int Nz, float Px, float Py, float Pz, int n_count, int n_scalars, int n_properties,
     float fiber_shiftX, float fiber_shiftY, float fiber_shiftZ, float min_seg_len, float min_fiber_len, float max_fiber_len,
@@ -112,13 +85,50 @@ int trk2dictionary(
     float* ptrToVOXMM, unsigned short ndirs, short* ptrHashTable
 )
 {
-    // Variables
-    string    filename;
-    string    OUTPUT_path(path_out);       
+    /*=========================*/
+    /*     IC compartments     */
+    /*=========================*/
+    float          fiber[3][MAX_FIB_LEN];
+    float          fiberNorm;
+    unsigned int   N, totICSegments = 0, totFibers = 0, v;
+    unsigned short o;
+    unsigned char  kept;
+    std::string    filename;
+    std::string    OUTPUT_path(path_out);
+    std::map<segKey,float>::iterator it;
+
+    std::map<segInVoxKey,float> FiberNorm;
+    std::map<segInVoxKey,float>::iterator itNorm;
+    segInVoxKey         inVoxKey;
+
+    printf( "\n   \033[0;32m* Exporting IC compartments:\033[0m\n" );
+
+    int isTRK;
+    char *ext = strrchr(str_filename, '.');
+    if (strcmp(ext,".trk")==0) //for .trk file
+        isTRK = 1;
+    else if (strcmp(ext,".tck")==0)// for .tck file
+        isTRK = 0;
+    else
+        return 0;
 
 
-    // Set the global variables defined above. 
-    // The values are provided by the cython script
+    FILE* fpTractogram = fopen(str_filename,"rb"); //open
+    if (fpTractogram == NULL) return 0;
+    fseek( fpTractogram, data_offset, SEEK_SET ); //skip header
+
+    //int ncount = n_count;
+
+    // unsigned int j = 0;
+    // int max_p = 100;
+
+/*
+    for( int f = 0; f<n_count; f++ ){
+        j = Pars( fpTractogram, max_p );
+        //printf( " streamline %d,  points %d\n", f, j );
+    } */
+
+    // set global variables
     dim.Set( Nx, Ny, Nz );
     pixdim.Set( Px, Py, Pz );
     fiberShiftXmm = fiber_shiftX * pixdim.x; // shift in mm for the coordinates
@@ -130,144 +140,41 @@ int trk2dictionary(
     minFiberLen   = min_fiber_len;
     maxFiberLen   = max_fiber_len;
 
-    // P.resize( nReplicas ); // I can leave this here, but then I need to pass P to all functions
+    P.resize( nReplicas );
 
-    // Then -> check the type of the file extension
-    int isTRK;
-    char *ext = strrchr(str_filename, '.');
-    if (strcmp(ext,".trk")==0) //for .trk file
-        isTRK = 1;
-    else if (strcmp(ext,".tck")==0)// for .tck file
-        isTRK = 0;
-    else
-        return 0;    
-
-
-    /* ... and if it's possible to use the code in parallel or not
-    if ( threads_counts > 0 ){
-        par = true; // Meaning the code can be run exploiting multi-threading
-    } else {
-        par = false; // The code stay sequential
-    } */
-
-
-    // Tractogram file set-up
-    FILE* fpTractogram = fopen( str_filename,"rb" ); // open
-    if ( fpTractogram == NULL ) return 0; // if there's no tractogram file, then return 0
-    fseek( fpTractogram, data_offset, SEEK_SET ); // skip header, the file descriptor is moved 1000 char ahead
-
-    // Creation of the results files
+    // open files
     filename = OUTPUT_path+"/dictionary_TRK_norm.dict";   FILE* pDict_TRK_norm = fopen(filename.c_str(),"wb");
-
     if ( !pDict_TRK_norm )
     {
         printf( "\n[trk2dictionary] Unable to create output files" );
         return 0;
     }
-
     filename = OUTPUT_path+"/dictionary_IC_f.dict";        FILE* pDict_IC_f       = fopen(filename.c_str(),"wb");
     filename = OUTPUT_path+"/dictionary_IC_v.dict";        FILE* pDict_IC_v       = fopen(filename.c_str(),"wb");
     filename = OUTPUT_path+"/dictionary_IC_o.dict";        FILE* pDict_IC_o       = fopen(filename.c_str(),"wb");
     filename = OUTPUT_path+"/dictionary_IC_len.dict";      FILE* pDict_IC_len     = fopen(filename.c_str(),"wb");
     filename = OUTPUT_path+"/dictionary_TRK_len.dict";     FILE* pDict_TRK_len    = fopen(filename.c_str(),"wb");
     filename = OUTPUT_path+"/dictionary_TRK_lenTot.dict";  FILE* pDict_TRK_lenTot = fopen(filename.c_str(),"wb");
-    filename = OUTPUT_path+"/dictionary_TRK_kept.dict";    FILE* pDict_TRK_kept   = fopen(filename.c_str(),"wb");     
+    filename = OUTPUT_path+"/dictionary_TRK_kept.dict";    FILE* pDict_TRK_kept   = fopen(filename.c_str(),"wb");
 
-    filename = OUTPUT_path+"/dictionary_EC_v.dict";        FILE* pDict_EC_v   = fopen( filename.c_str(),   "wb" );
-    filename = OUTPUT_path+"/dictionary_EC_o.dict";        FILE* pDict_EC_o   = fopen( filename.c_str(),   "wb" );
-    
-
-    printf( "\n   \033[0;32m* Exporting IC compartments:\033[0m\n" );
-
-
-    // Calling to the core function
-    for( int i = 0; i<threads_count; i++ ){
-        threads.push_back( thread( ICpar, fpTractogram, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM, ptrBlurRho, ptrBlurAngle, ptrBlurWeights,
-        ptrBlurApplyTo, ptrTDI, pDict_IC_f, pDict_IC_v , pDict_IC_o , pDict_IC_len , pDict_TRK_norm, pDict_TRK_len, pDict_TRK_lenTot, pDict_TRK_kept,
-        ptrHashTable ) );
-    }
-
-    for( int i = 0; i<threads_count; i++ ) {
-        threads[i].join();
-    }
-
-
-   printf("     [ %d streamlines kept, %d segments in total ]\n", totFibers, totICSegments );
-   // printf("     [ %d voxels, %d segments ]\n", totECVoxels, totECSegments );
-   
-
-   fclose( fpTractogram );
-   fclose( pDict_TRK_norm );
-   fclose( pDict_IC_f );
-   fclose( pDict_IC_v );
-   fclose( pDict_IC_o );
-   fclose( pDict_IC_len );
-   fclose( pDict_TRK_len );
-   fclose( pDict_TRK_lenTot );
-   fclose( pDict_TRK_kept );
-   
-   // fclose( pDict_EC_v );
-   // fclose( pDict_EC_o );
-   
-   return 1;
-
-}
-
-
-// ============= PARALLEL Trk2Dictionary FUNCTIONS ================
-
-void ICpar( FILE* fpTractogram, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
-double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, float* ptrTDI, FILE* pDict_IC_f,
-FILE* pDict_IC_v , FILE* pDict_IC_o , FILE* pDict_IC_len , FILE* pDict_TRK_norm, FILE* pDict_TRK_len, FILE* pDict_TRK_lenTot, 
-FILE* pDict_TRK_kept, short* ptrHashTable )
-{
-
-    // --- Computing the IC comparments ---
-    
-    // Variables definition
-    float          fiber[3][MAX_FIB_LEN];
-    float          fiberNorm;   // normalization
-    unsigned int   N, v;
-    unsigned short o;
-    unsigned char  kept;
-    vector<Vector<double>>   P; 
-    int count;
-
-    map<segKey,float>::iterator it;
-    map<segInVoxKey,float> FiberNorm;
-    map<segInVoxKey,float>::iterator itNorm;
-
-    segInVoxKey inVoxKey;    
-
-    P.resize(nReplicas);
-
-    // Iterate over streamlines
-
-    // ProgressBar PROGRESS( n_count );
-    // PROGRESS.setPrefix("     ");    // Fighetterie
-    
-    while( f != n_count ) // for(int f=0; f<n_count; f++) 
+    // iterate over streamlines
+    ProgressBar PROGRESS( n_count );
+    PROGRESS.setPrefix("     ");
+    for(int f=0; f<n_count ;f++)
     {
-        // PROGRESS.inc();
-
-        IC_read.lock();
-        
+        PROGRESS.inc();
         if ( isTRK )
             N = read_fiberTRK( fpTractogram, fiber, n_scalars, n_properties );
         else
             N = read_fiberTCK( fpTractogram, fiber , ptrToVOXMM );
+            printf( "Read TCK: %d\n", N);
+            N = Pars( fpTractogram );
+            printf( "Pars: %d\n", N);
 
-            count = f;
-            f++;
-
-        IC_read.unlock();
-
-        fiberForwardModel( fiber, N, nReplicas, ptrBlurRho, ptrBlurAngle, ptrBlurWeights, ptrBlurApplyTo[count], ptrHashTable, P );
-
-
+        
+        fiberForwardModel( fiber, N, nReplicas, ptrBlurRho, ptrBlurAngle, ptrBlurWeights, ptrBlurApplyTo[f], ptrHashTable );
 
         kept = 0;
-
         if ( FiberSegments.size() > 0 )
         {
             if ( FiberLen > minFiberLen && FiberLen < maxFiberLen )
@@ -278,16 +185,10 @@ FILE* pDict_TRK_kept, short* ptrHashTable )
                     // NB: plese note inverted ordering for 'v'
                     v = it->first.x + dim.x * ( it->first.y + dim.y * it->first.z );
                     o = it->first.o;
-
-                    IC_pDict.lock();
-                    
                     fwrite( &totFibers,      4, 1, pDict_IC_f );
                     fwrite( &v,              4, 1, pDict_IC_v );
                     fwrite( &o,              2, 1, pDict_IC_o );
                     fwrite( &(it->second),   4, 1, pDict_IC_len );
-                    
-                    IC_pDict.unlock();
-
                     ptrTDI[ it->first.z + dim.z * ( it->first.y + dim.y * it->first.x ) ] += it->second;
                     inVoxKey.set( it->first.x, it->first.y, it->first.z );
                     FiberNorm[inVoxKey] += it->second;
@@ -296,34 +197,40 @@ FILE* pDict_TRK_kept, short* ptrHashTable )
                     fiberNorm += pow(itNorm->second,2);
                 fiberNorm = sqrt(fiberNorm);
                 FiberNorm.clear();
-
-                IC_write.lock();
-                
                 fwrite( &fiberNorm,   1, 4, pDict_TRK_norm );   // actual length considered in optimization
                 fwrite( &FiberLen,    1, 4, pDict_TRK_len );    // length of the streamline
                 fwrite( &FiberLenTot, 1, 4, pDict_TRK_lenTot ); // length of the streamline (considering the blur)
-                IC_write.unlock();
-
-                ICcounter.lock();
                 totICSegments += FiberSegments.size();
                 totFibers++;
-                
-                ICcounter.unlock();
-
                 kept = 1;
             }
         }
-
-        IC_kept.lock();
         fwrite( &kept, 1, 1, pDict_TRK_kept );
-        IC_kept.unlock();
     }
-}   
+    PROGRESS.close();
 
-/*
-    // PROGRESS.close();
+    fclose( fpTractogram );
+    fclose( pDict_TRK_norm );
+    fclose( pDict_IC_f );
+    fclose( pDict_IC_v );
+    fclose( pDict_IC_o );
+    fclose( pDict_IC_len );
+    fclose( pDict_TRK_len );
+    fclose( pDict_TRK_lenTot );
+    fclose( pDict_TRK_kept );
 
-    // --- EC Compartement ---
+    printf("     [ %d streamlines kept, %d segments in total ]\n", totFibers, totICSegments );
+
+
+    /*=========================*/
+    /*     EC compartments     */
+    /*=========================*/
+    unsigned int totECSegments = 0, totECVoxels = 0;
+
+    printf( "\n   \033[0;32m* Exporting EC compartments:\033[0m\n" );
+
+    filename = OUTPUT_path+"/dictionary_EC_v.dict";        FILE* pDict_EC_v   = fopen( filename.c_str(),   "wb" );
+    filename = OUTPUT_path+"/dictionary_EC_o.dict";        FILE* pDict_EC_o   = fopen( filename.c_str(),   "wb" );
 
     if ( ptrPEAKS != NULL )
     {
@@ -336,12 +243,12 @@ FILE* pDict_TRK_kept, short* ptrHashTable )
         float          *ptr;
         int            ox, oy;
 
-    //  PROGRESS.reset( dim.z );
-        for(iz=0; iz<dim.z; iz++)
+        PROGRESS.reset( dim.z );
+        for(iz=0; iz<dim.z ;iz++)
         {
-            // PROGRESS.inc();
-            for(iy=0; iy<dim.y; iy++)
-            for(ix=0; ix<dim.x; ix++)
+            PROGRESS.inc();
+            for(iy=0; iy<dim.y ;iy++)
+            for(ix=0; ix<dim.x ;ix++)
             {
                 // check if in mask previously computed from IC segments
                 if ( ptrTDI[ iz + dim.z * ( iy + dim.y * ix ) ] == 0 ) continue;
@@ -364,7 +271,7 @@ FILE* pDict_TRK_kept, short* ptrHashTable )
                     ec_seg.y  = iy;
                     ec_seg.z  = iz;
                     atLeastOne = 0;
-                    for(id=0; id<Np; id++)
+                    for(id=0; id<Np ;id++)
                     {
                         if ( norms[id]==0 || norms[id] < vf_THR*peakMax ) continue; // peak too small, don't consider it
 
@@ -394,39 +301,32 @@ FILE* pDict_TRK_kept, short* ptrHashTable )
 
                         v = ec_seg.x + dim.x * ( ec_seg.y + dim.y * ec_seg.z );
                         o = ptrHashTable[ox*181 + oy];
-
-                        EC_write.lock();
-                        
                         fwrite( &v, 4, 1, pDict_EC_v );
                         fwrite( &o, 2, 1, pDict_EC_o );
                         totECSegments++;
-                        
-                        EC_write.unlock();
-
                         atLeastOne = 1;
                     }
                     if ( atLeastOne>0 )
-                        EC_count.lock();
-                        
                         totECVoxels++;
-                        
-                        EC_count.unlock();
                 }
             }
         }
-        // PROGRESS.close();
+        PROGRESS.close();
     }
 
+    fclose( pDict_EC_v );
+    fclose( pDict_EC_o );
+
+    printf("     [ %d voxels, %d segments ]\n", totECVoxels, totECSegments );
+
     return 1;
-} */
-
-
+}
 
 
 /********************************************************************************************************************/
 /*                                                 fiberForwardModel                                                */
 /********************************************************************************************************************/
-void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable, vector<Vector<double>> &P )
+void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool doApplyBlur, short* ptrHashTable )
 {
     static Vector<double> S1, S2, S1m, S2m, P_old, P_int, q, n, nr, qxn, qxqxn;
     static Vector<double> vox, vmin, vmax, dir1, dir2;
@@ -436,7 +336,6 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nRepl
     FiberLen = 0.0;
     FiberLenTot = 0.0;
     FiberSegments.clear();
-
     if ( pts <= 2 )
         return;
 
@@ -454,7 +353,7 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nRepl
     n.Normalize();
 
     // duplicate first point and move to corresponding grid locations
-    for(k=0; k<nReplicas; k++)
+    for(k=0; k<nReplicas ;k++)
     {
         if ( !doApplyBlur && k>0 )
             continue;
@@ -648,8 +547,6 @@ void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, in
     oy = (int)round(longitude/M_PI*180.0);  // phi   // i2
     key.set( vox.x, vox.y, vox.z, (unsigned short) ptrHashTable[ox*181 + oy] );
     FiberSegments[key] += w*len;
-
-    // use a mutex to manage the access to the variable
     FiberLenTot += w*len;
     if ( k==0 ) // fiber length computed only from original segments
         FiberLen += len;
@@ -717,10 +614,6 @@ bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vect
 }
 
 
-
-
-// ----- Reading Functions ----------
-
 // Read a fiber from file .trk
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np )
 {
@@ -730,13 +623,13 @@ unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int n
     if ( N >= MAX_FIB_LEN || N <= 0 )
         return 0;
 
-    float J[3];
+    float P[3];
     for(int i=0; i<N; i++)
     {
-        fread((char*)J, 1, 12, fp);
-        fiber[0][i] = J[0];
-        fiber[1][i] = J[1];
-        fiber[2][i] = J[2];
+        fread((char*)P, 1, 12, fp);
+        fiber[0][i] = P[0];
+        fiber[1][i] = P[1];
+        fiber[2][i] = P[2];
         fseek(fp,4*ns,SEEK_CUR);
     }
     fseek(fp,4*np,SEEK_CUR);
@@ -748,15 +641,32 @@ unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int n
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToVOXMM )
 {
     int i = 0;
-    float J[3];
-    fread((char*)J, 1, 12, fp);
-    while( !(isnan(J[0])) && !(isnan(J[1])) &&  !(isnan(J[2])) )
+    float P[3];
+    fread((char*)P, 1, 12, fp);
+    while( !(isnan(P[0])) && !(isnan(P[1])) &&  !(isnan(P[2])) )
     {
-        fiber[0][i] = J[0] * ptrToVOXMM[0] + J[1] * ptrToVOXMM[1] + J[2] * ptrToVOXMM[2]  + ptrToVOXMM[3];
-        fiber[1][i] = J[0] * ptrToVOXMM[4] + J[1] * ptrToVOXMM[5] + J[2] * ptrToVOXMM[6]  + ptrToVOXMM[7];
-        fiber[2][i] = J[0] * ptrToVOXMM[8] + J[1] * ptrToVOXMM[9] + J[2] * ptrToVOXMM[10] + ptrToVOXMM[11];
+        fiber[0][i] = P[0] * ptrToVOXMM[0] + P[1] * ptrToVOXMM[1] + P[2] * ptrToVOXMM[2]  + ptrToVOXMM[3];
+        fiber[1][i] = P[0] * ptrToVOXMM[4] + P[1] * ptrToVOXMM[5] + P[2] * ptrToVOXMM[6]  + ptrToVOXMM[7];
+        fiber[2][i] = P[0] * ptrToVOXMM[8] + P[1] * ptrToVOXMM[9] + P[2] * ptrToVOXMM[10] + ptrToVOXMM[11];
         i++;
-        fread((char*)J, 1, 12, fp);
+        fread((char*)P, 1, 12, fp);
+    }
+
+    return i;
+}
+
+unsigned int Pars( FILE* fp  )
+{
+    int i = 0;
+    float P[3];
+    fread((char*)P, 1, 12, fp);
+    while( !(isnan(P[0])) && !(isnan(P[1])) &&  !(isnan(P[2]))  )
+    {
+        //fiber[0][i] = P[0] * ptrToVOXMM[0] + P[1] * ptrToVOXMM[1] + P[2] * ptrToVOXMM[2]  + ptrToVOXMM[3];
+        //fiber[1][i] = P[0] * ptrToVOXMM[4] + P[1] * ptrToVOXMM[5] + P[2] * ptrToVOXMM[6]  + ptrToVOXMM[7];
+        //fiber[2][i] = P[0] * ptrToVOXMM[8] + P[1] * ptrToVOXMM[9] + P[2] * ptrToVOXMM[10] + ptrToVOXMM[11];
+        i++;
+        fread((char*)P, 1, 12, fp);
     }
 
     return i;
