@@ -633,5 +633,6 @@ unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToV
         fread((char*)P, 1, 12, fp);
     }
 
+    
     return i;
 }
