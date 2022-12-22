@@ -125,7 +125,15 @@ int trk2dictionary(
     doIntersect   = c > 0;
     minSegLen     = min_seg_len;
     minFiberLen   = min_fiber_len;
-    maxFiberLen   = max_fiber_len;    
+    maxFiberLen   = max_fiber_len;
+
+    //Check threads_count
+    if (threads_count == 0) {
+        cout << "\n   \033[0;32m* No concurrent threads are supported." << endl;
+        threads_count = 1;
+    } else {
+        cout<< "\n   \033[0;32m* " << threads_count << " concurrent threads are supported." << endl;
+    }   
 
 
     // Compute the batch size for each thread
