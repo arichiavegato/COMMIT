@@ -1,3 +1,4 @@
+#define _FILE_OFFSET_BITS 64
 #include <stdio.h>
 #include <cstdio>
 #include <string>
@@ -9,7 +10,7 @@
 #include <math.h>
 #include <iostream> // Questa la rimuovo dopo
 #include <thread>
-#include <mutex>
+#include <numeric>
 
 #define MAX_FIB_LEN 10000
 
@@ -65,9 +66,6 @@ thread_local float                           FiberLen;      // length of a strea
 thread_local float                           FiberLenTot;   // length of a streamline (considering the blur)
 thread_local vector< Vector<double> >        P;
 
-unsigned int    totICSegments = 0;
-unsigned int    totFibers = 0;
-
 Vector<int>     dim;
 Vector<float>   pixdim;
 float*          ptrMASK;
@@ -76,14 +74,12 @@ bool            doIntersect;
 float           minSegLen, minFiberLen, maxFiberLen;
 
 // Threads variables
+// unsigned int    threads_count = 16;
 unsigned int    threads_count = thread::hardware_concurrency();
 vector<thread>  threads;
-mutex           ICcounter, mTDI; // For ICSegments
+vector<unsigned int>    totICSegments(threads_count, 0);
+vector<unsigned int>    totFibers(threads_count, 0);
 
-
-// Test variables --- Need to keep these?
-// unsigned int threads_count = 4;
-// mutex m;
 
 
 // --- Functions Definitions ----
@@ -93,11 +89,11 @@ void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, in
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM );
 
-long int OffsetPointer( FILE* fp, int isTRK );
+// long int OffsetPointer( FILE* fp, int isTRK );
 
 int ICSegments( char* str_filename, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 float* ptrTDI, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
-int offset, int idx, unsigned int startpos, unsigned int endpos );
+unsigned long long int offset, int idx, unsigned int startpos, unsigned int endpos );
 
 
 
@@ -178,12 +174,13 @@ int trk2dictionary(
 
 
     // Compute the offset to pass at each thread
-    long int current_position;
-    long int offset_values[threads_count];
+    unsigned long long int current_position;
+    unsigned long long int offset_values[threads_count];
     int f = 0;
     float Buff[3];    
 
     offset_values[0] = ftell( fpTractogram );
+    errno = 0;
 
     do {
 
@@ -206,6 +203,13 @@ int trk2dictionary(
     fclose(fpTractogram); // Brute force
 
 
+    // Checks
+    // for( int k = 0; k<threads_count; k++ ) {
+    //     printf( "Offset %d\n", offset_values[k] );
+    // }    
+    
+
+
 
 
     // ------- IC Compartments ------
@@ -224,7 +228,7 @@ int trk2dictionary(
     }
 
 
-    printf("     [ %d streamlines kept, %d segments in total ]\n", totFibers, totICSegments );
+     printf(" [ %d streamlines kept, %d segments in total ]\n", std::accumulate(totFibers.begin(), totFibers.end(), 0), std::accumulate( totICSegments.begin(), totICSegments.end(), 0) );
 
 
 
@@ -347,7 +351,7 @@ int trk2dictionary(
 
 int ICSegments( char* str_filename, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 float* ptrTDI, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
-int offset, int idx, unsigned int startpos, unsigned int endpos )
+unsigned long long int offset, int idx, unsigned int startpos, unsigned int endpos )
 {
    
     // Variables definition
@@ -363,7 +367,7 @@ int offset, int idx, unsigned int startpos, unsigned int endpos )
     map<segInVoxKey,float> FiberNorm;
     map<segInVoxKey,float>::iterator itNorm;
 
-    segInVoxKey inVoxKey;    
+    segInVoxKey inVoxKey; 
 
     P.resize(nReplicas);
 
@@ -417,9 +421,7 @@ int offset, int idx, unsigned int startpos, unsigned int endpos )
                     fwrite( &o,              2, 1, pDict_IC_o );
                     fwrite( &(it->second),   4, 1, pDict_IC_len );
                     
-                    mTDI.lock();
                     ptrTDI[ it->first.z + dim.z * ( it->first.y + dim.y * it->first.x ) ] += it->second;
-                    mTDI.unlock();
 
                     inVoxKey.set( it->first.x, it->first.y, it->first.z );
                     FiberNorm[inVoxKey] += it->second;
@@ -435,13 +437,10 @@ int offset, int idx, unsigned int startpos, unsigned int endpos )
                 fwrite( &FiberLen,    1, 4, pDict_TRK_len );    // length of the streamline
                 fwrite( &FiberLenTot, 1, 4, pDict_TRK_lenTot ); // length of the streamline (considering the blur)
 
-                ICcounter.lock();
 
-                totICSegments += FiberSegments.size();
-                totFibers++;
+                totICSegments[idx] += FiberSegments.size();
+                totFibers[idx]++;
                 
-                ICcounter.unlock();
-
                 kept = 1;
             }
 
@@ -449,6 +448,8 @@ int offset, int idx, unsigned int startpos, unsigned int endpos )
 
         fwrite( &kept, 1, 1, pDict_TRK_kept );
     }
+
+    //printf( "\nThread %d    totFibers per thread %d\n", idx, totFibers );
 
     fclose( fpTractogram1 );
     fclose( pDict_TRK_norm );
@@ -805,11 +806,11 @@ unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToV
 
         fread((char*)J, 1, 12, fp);
 
-        /* 
+        
         if( (isinf(J[0])) && (isinf(J[1])) &&  (isinf(J[2])) ) {
             return 0;
         } 
-        */
+        
 
     }
 
