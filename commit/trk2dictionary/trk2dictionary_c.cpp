@@ -1,4 +1,3 @@
-#define _FILE_OFFSET_BITS 64
 #include <stdio.h>
 #include <cstdio>
 #include <string>
@@ -8,13 +7,17 @@
 #include "ProgressBar.h"
 #include <numpy/arrayobject.h>
 #include <math.h>
-#include <iostream> // Questa la rimuovo dopo
+#include <iostream>
 #include <thread>
 #include <numeric>
 
-#define MAX_FIB_LEN 10000
+#include <mutex>
 
-using namespace std;   // leave it? Why was't it declared?
+#define _FILE_OFFSET_BITS 64
+#define MAX_FIB_LEN 10000
+#define MAX_THREADS 10000
+
+using namespace std;
 
 
 // Class to store the segments of one fiber
@@ -74,12 +77,9 @@ bool            doIntersect;
 float           minSegLen, minFiberLen, maxFiberLen;
 
 // Threads variables
-// unsigned int    threads_count = 16;
-unsigned int    threads_count = thread::hardware_concurrency();
 vector<thread>  threads;
-vector<unsigned int>    totICSegments(threads_count, 0);
-vector<unsigned int>    totFibers(threads_count, 0);
-
+vector<unsigned int>    totICSegments( MAX_THREADS, 0 );    // originally as totICSegments( threads_count, 0 )
+vector<unsigned int>    totFibers( MAX_THREADS, 0 );
 
 
 // --- Functions Definitions ----
@@ -88,12 +88,11 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nRepl
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable);
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM );
-
-// long int OffsetPointer( FILE* fp, int isTRK );
-
+ 
 int ICSegments( char* str_filename, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 float* ptrTDI, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
-unsigned long long int offset, int idx, unsigned int startpos, unsigned int endpos );
+unsigned long long int offset, int idx, unsigned int startpos, unsigned int endpos ); 
+
 
 
 
@@ -107,7 +106,7 @@ int trk2dictionary(
     float* ptrPEAKS, int Np, float vf_THR, int ECix, int ECiy, int ECiz,
     float* _ptrMASK, float* ptrTDI, char* path_out, int c, double* ptrPeaksAffine,
     int nReplicas, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo,
-    float* ptrToVOXMM, unsigned short ndirs, short* ptrHashTable
+    float* ptrToVOXMM, unsigned short ndirs, short* ptrHashTable, int threads_count
 )
 {
 
@@ -144,7 +143,7 @@ int trk2dictionary(
     // Compute where each threads should starts reading
     unsigned int elements = threads_count + 1;
     unsigned int StartPos[elements] = {0};
-    unsigned int Pos[elements] = {0};  // Pos e' uguale a StartPos serve perche' altrimenti gli vengono passati valori
+    unsigned int Pos[elements] = {0};  // Same as StartPos
 
     for (int i = 1; i < threads_count; i++)
     {
@@ -161,11 +160,12 @@ int trk2dictionary(
     if (fpTractogram == NULL) return 0;
     fseek( fpTractogram, data_offset, SEEK_SET ); // skip the header
 
-    // Check the file extension
+
+    // Check the file extension -> Add: same thing but for .trk files
     int isTRK;
 
     char *ext = strrchr(str_filename, '.');
-    if (strcmp(ext,".trk")==0) //for .trk file
+    if (strcmp(ext,".trk")==0) // for .trk file
         isTRK = 1;
     else if (strcmp(ext,".tck")==0) // for .tck file
         isTRK = 0;
@@ -203,14 +203,6 @@ int trk2dictionary(
     fclose(fpTractogram); // Brute force
 
 
-    // Checks
-    // for( int k = 0; k<threads_count; k++ ) {
-    //     printf( "Offset %d\n", offset_values[k] );
-    // }    
-    
-
-
-
 
     // ------- IC Compartments ------
 
@@ -220,7 +212,7 @@ int trk2dictionary(
     for( int i = 0; i<threads_count; i++ ){
         threads.push_back( thread( ICSegments, str_filename, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM,
         ptrTDI, ptrBlurRho, ptrBlurAngle, ptrBlurWeights, ptrBlurApplyTo, ptrHashTable, path_out, offset_values[i], 
-        i, StartPos[i], StartPos[i+1] ) );
+        i, StartPos[i], StartPos[i+1]  ) );
     }
 
     for( int i = 0; i<threads_count; i++ ) {
@@ -228,7 +220,7 @@ int trk2dictionary(
     }
 
 
-     printf(" [ %d streamlines kept, %d segments in total ]\n", std::accumulate(totFibers.begin(), totFibers.end(), 0), std::accumulate( totICSegments.begin(), totICSegments.end(), 0) );
+     printf( "     [ %d streamlines kept, %d segments in total ]\n", std::accumulate(totFibers.begin(), totFibers.end(), 0), std::accumulate( totICSegments.begin(), totICSegments.end(), 0) );
 
 
 
@@ -342,15 +334,12 @@ int trk2dictionary(
 
 
 
-
-
-
 /********************************************************************************************************************/
 /*                                                Parallel Function                                                 */
 /********************************************************************************************************************/
 
-int ICSegments( char* str_filename, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
-float* ptrTDI, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
+int ICSegments( char* str_filename, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM, float* ptrTDI, double* ptrBlurRho, 
+double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
 unsigned long long int offset, int idx, unsigned int startpos, unsigned int endpos )
 {
    
@@ -371,7 +360,6 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
 
     P.resize(nReplicas);
 
-
     filename = OUTPUT_path+"/dictionary_TRK_norm_" + std::to_string(idx) + ".dict";   FILE* pDict_TRK_norm = fopen(filename.c_str(),"wb");
     if ( !pDict_TRK_norm )
     {
@@ -384,7 +372,6 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
     filename = OUTPUT_path+"/dictionary_TRK_len_" + std::to_string(idx) + ".dict";     FILE* pDict_TRK_len    = fopen(filename.c_str(),"wb");
     filename = OUTPUT_path+"/dictionary_TRK_lenTot_" + std::to_string(idx) + ".dict";  FILE* pDict_TRK_lenTot = fopen(filename.c_str(),"wb");
     filename = OUTPUT_path+"/dictionary_TRK_kept_" + std::to_string(idx) + ".dict";    FILE* pDict_TRK_kept   = fopen(filename.c_str(),"wb");
-
 
 
     // Open tractogram file
@@ -437,7 +424,6 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
                 fwrite( &FiberLen,    1, 4, pDict_TRK_len );    // length of the streamline
                 fwrite( &FiberLenTot, 1, 4, pDict_TRK_lenTot ); // length of the streamline (considering the blur)
 
-
                 totICSegments[idx] += FiberSegments.size();
                 totFibers[idx]++;
                 
@@ -449,9 +435,8 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
         fwrite( &kept, 1, 1, pDict_TRK_kept );
     }
 
-    //printf( "\nThread %d    totFibers per thread %d\n", idx, totFibers );
-
     fclose( fpTractogram1 );
+
     fclose( pDict_TRK_norm );
     fclose( pDict_IC_f );
     fclose( pDict_IC_v );
@@ -816,29 +801,3 @@ unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN], float* ptrToV
 
     return i;
 }
-
-
-/* TBC
-
-long int OffsetPointer( FILE* fp, int isTRK ) {
-
-    long int position;
-    float Buff[3];    
-
-
-    //printf("here");
-
-    if( !isTRK ){
-
-        fread((char*)Buff, 1, 12, fp );
-
-        while ( isnan(Buff[0]) ) {
-            position = ftell(fp);
-            return position;
-        }
-    }
-    else{
-        // do something
-    }
-
-} */
