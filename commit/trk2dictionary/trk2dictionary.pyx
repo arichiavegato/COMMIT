@@ -6,7 +6,7 @@ import numpy as np
 cimport numpy as np
 import nibabel
 from os.path import join, exists, splitext, dirname, isdir
-from os import makedirs, remove, system
+from os import makedirs, remove, system, listdir
 import time
 import amico
 import pickle
@@ -246,10 +246,23 @@ cpdef run( filename_tractogram=None, path_out=None, filename_peaks=None, filenam
     print( f'\t- Output written to "{path_out}"' )
     if not exists( path_out ):
         makedirs( path_out )
+    else: 
+        import shutil
+        shutil.rmtree( path_out )
+        makedirs( path_out )
     
-    # Number of threads
-    if threads is None:
-        threads = multiprocessing.cpu_count()
+    
+    # Set the number of threads
+    if threads is None :
+        # Set to the number of CPUs in the system
+        try :
+            import multiprocessing
+            threads = multiprocessing.cpu_count()
+        except :
+            threads = 1
+
+    if threads < 1 or threads > 255 :
+        ERROR( 'Number of threads must be between 1 and 255' )
 
     # Load data from files
     LOG( '\n   * Loading data:' )
@@ -409,6 +422,7 @@ cpdef run( filename_tractogram=None, path_out=None, filename_peaks=None, filenam
     dictionary_info['blur_sigma'] = blur_sigma
     dictionary_info['blur_apply_to'] = blur_apply_to
     dictionary_info['ndirs'] = ndirs
+    dictionary_info['threads'] = threads
     with open( join(path_out,'dictionary_info.pickle'), 'wb+' ) as dictionary_info_file:
         pickle.dump(dictionary_info, dictionary_info_file, protocol=2)
 
@@ -446,34 +460,6 @@ cpdef run( filename_tractogram=None, path_out=None, filename_peaks=None, filenam
     niiMASK_hdr = _get_header( niiMASK )
     niiMASK_hdr['descrip'] = niiTDI_hdr['descrip']
     nibabel.save( niiMASK, join(path_out,'dictionary_mask.nii.gz') )
-
-
-    # Concatenate and remove the different files created
-
-    system(f"cat {path_out}/dictionary_IC_f_*.dict > {path_out}/dictionary_IC_f.dict")
-    system(f"rm {path_out}/dictionary_IC_f_*.dict" )
-
-    system(f"cat {path_out}/dictionary_IC_v_*.dict > {path_out}/dictionary_IC_v.dict")
-    system(f"rm {path_out}/dictionary_IC_v_*.dict" )
-
-    system(f"cat {path_out}/dictionary_IC_o_*.dict > {path_out}/dictionary_IC_o.dict")
-    system(f"rm {path_out}/dictionary_IC_o_*.dict" )
-
-    system(f"cat {path_out}/dictionary_IC_len_*.dict > {path_out}/dictionary_IC_len.dict")
-    system(f"rm {path_out}/dictionary_IC_len_*.dict" )
-
-    system(f"cat {path_out}/dictionary_TRK_len_*.dict > {path_out}/dictionary_TRK_len.dict")
-    system(f"rm {path_out}/dictionary_TRK_len_*.dict" )
-
-    system(f"cat {path_out}/dictionary_TRK_lenTot_*.dict > {path_out}/dictionary_TRK_lenTot.dict")
-    system(f"rm {path_out}/dictionary_TRK_lenTot_*.dict" )
-
-    system(f"cat {path_out}/dictionary_TRK_kept_*.dict > {path_out}/dictionary_TRK_kept.dict")
-    system(f"rm {path_out}/dictionary_TRK_kept_*.dict" )
-
-    system(f"cat {path_out}/dictionary_TRK_norm_*.dict > {path_out}/dictionary_TRK_norm.dict")
-    system(f"rm {path_out}/dictionary_TRK_norm_*.dict" )   
-
 
 
     LOG( f'\n   [ {time.time() - tic:.1f} seconds ]' )

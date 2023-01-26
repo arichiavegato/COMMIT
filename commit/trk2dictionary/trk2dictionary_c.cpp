@@ -10,12 +10,12 @@
 #include <iostream>
 #include <thread>
 #include <numeric>
-
 #include <mutex>
+
 
 #define _FILE_OFFSET_BITS 64
 #define MAX_FIB_LEN 10000
-#define MAX_THREADS 10000
+#define MAX_THREADS 255
 
 using namespace std;
 
@@ -81,6 +81,9 @@ vector<thread>  threads;
 vector<unsigned int>    totICSegments( MAX_THREADS, 0 );    // originally as totICSegments( threads_count, 0 )
 vector<unsigned int>    totFibers( MAX_THREADS, 0 );
 
+mutex m;
+// unsigned int totICSegments, totFibers;
+
 
 // --- Functions Definitions ----
 bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vector<double>& vmin, Vector<double>& vmax, double & t);
@@ -92,8 +95,6 @@ unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOX
 int ICSegments( char* str_filename, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
 float* ptrTDI, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
 unsigned long long int offset, int idx, unsigned int startpos, unsigned int endpos ); 
-
-
 
 
 // ===========================================
@@ -122,13 +123,8 @@ int trk2dictionary(
     minFiberLen   = min_fiber_len;
     maxFiberLen   = max_fiber_len;
 
-    //Check threads_count
-    if (threads_count == 0) {
-        cout << "\n   \033[0;32m* No concurrent threads are supported." << endl;
-        threads_count = 1;
-    } else {
-        cout<< "\n   \033[0;32m* " << threads_count << " concurrent threads are supported." << endl;
-    }   
+    
+    printf("\n   \033[0;32m* %d concurrent threads are supported\n ", threads_count ); 
 
 
     // Compute the batch size for each thread
@@ -219,10 +215,7 @@ int trk2dictionary(
         threads[i].join();
     }
 
-
-     printf( "     [ %d streamlines kept, %d segments in total ]\n", std::accumulate(totFibers.begin(), totFibers.end(), 0), std::accumulate( totICSegments.begin(), totICSegments.end(), 0) );
-
-
+    printf( "     [ %d streamlines kept, %d segments in total ]\n", totFibers[threads_count-1], std::accumulate( totICSegments.begin(), totICSegments.end(), 0) );
 
 
     // ------- EC Compartments -------
@@ -307,7 +300,6 @@ int trk2dictionary(
                         oy = (int)round(longitude/M_PI*180.0);
                         v = ec_seg.x + dim.x * ( ec_seg.y + dim.y * ec_seg.z );
                         o = ptrHashTable[ox*181 + oy];
-                        
 
                         fwrite( &v, 4, 1, pDict_EC_v );
                         fwrite( &o, 2, 1, pDict_EC_o );
@@ -323,7 +315,11 @@ int trk2dictionary(
                 }
             }
         }
+    
     }
+
+    fclose( pDict_EC_v );
+    fclose( pDict_EC_o );
 
    printf("     [ %d voxels, %d segments ]\n", totECVoxels, totECSegments );
    
@@ -351,6 +347,7 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
     unsigned char  kept;
     string    filename;
     string    OUTPUT_path(path_out);
+    unsigned int sumFibers = startpos;
 
     map<segKey,float>::iterator it;
     map<segInVoxKey,float> FiberNorm;
@@ -392,6 +389,17 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
 
         kept = 0;
 
+        /*
+        // Check the keys values
+        // ===========================================
+        m.lock();
+        for(it=FiberSegments.begin(); it!=FiberSegments.end(); it++){
+            cout << idx << "\t" << it->first.x << "\t" << it->first.y << "\t" << it->first.z << "\n";
+        }
+        m.unlock();
+        // ===========================================
+        */
+
         if ( FiberSegments.size() > 0 )
         {
             if ( FiberLen > minFiberLen && FiberLen < maxFiberLen )
@@ -403,7 +411,7 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
                     v = it->first.x + dim.x * ( it->first.y + dim.y * it->first.z );
                     o = it->first.o;
                     
-                    fwrite( &totFibers,      4, 1, pDict_IC_f );
+                    fwrite( &sumFibers,      4, 1, pDict_IC_f );
                     fwrite( &v,              4, 1, pDict_IC_v );
                     fwrite( &o,              2, 1, pDict_IC_o );
                     fwrite( &(it->second),   4, 1, pDict_IC_len );
@@ -425,8 +433,9 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
                 fwrite( &FiberLenTot, 1, 4, pDict_TRK_lenTot ); // length of the streamline (considering the blur)
 
                 totICSegments[idx] += FiberSegments.size();
-                totFibers[idx]++;
-                
+                sumFibers ++;
+                totFibers[idx] = sumFibers;
+
                 kept = 1;
             }
 
