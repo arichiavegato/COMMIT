@@ -24,7 +24,6 @@ from amico.util import LOG, NOTE, WARNING, ERROR
 
 def setup( lmax=12, ndirs=None ) :
     """General setup/initialization of the COMMIT framework.
-
     Parameters
     ----------
     lmax : int
@@ -40,7 +39,6 @@ def setup( lmax=12, ndirs=None ) :
 
 def load_dictionary_info( filename ):
     """Function to load dictionary info file
-
     Parameters
     ----------
     filename : string
@@ -78,7 +76,6 @@ cdef class Evaluation :
 
     def __init__( self, study_path='.', subject='.' ) :
         """Setup the data structures with default values.
-
         Parameters
         ----------
         study_path : string
@@ -120,7 +117,6 @@ cdef class Evaluation :
 
     def load_data( self, dwi_filename, scheme_filename, b0_thr=0, b0_min_signal=0 ) :
         """Load the diffusion signal and its corresponding acquisition scheme.
-
         Parameters
         ----------
         dwi_filename : string
@@ -218,7 +214,6 @@ cdef class Evaluation :
 
     def set_model( self, model_name ) :
         """Set the model to use to describe the signal contributions in each voxel.
-
         Parameters
         ----------
         model_name : string
@@ -236,7 +231,6 @@ cdef class Evaluation :
     def generate_kernels( self, regenerate=False, lmax=12, ndirs=32761 ) :
         """Generate the high-resolution response functions for each compartment.
         Dispatch to the proper function, depending on the model.
-
         Parameters
         ----------
         regenerate : boolean
@@ -357,8 +351,8 @@ cdef class Evaluation :
 
 
     cpdef load_dictionary( self, path, use_all_voxels_in_mask=False ) :
-        """Load the sparse structure previously created with "trk2dictionary" script.
 
+        """Load the sparse structure previously created with "trk2dictionary" script.
         Parameters
         ----------
         path : string
@@ -369,6 +363,7 @@ cdef class Evaluation :
             trk2dictionary.run(), i.e. "filename_mask" parameter, will be used instead.
             NB: if no mask was specified in trk2dictionary, this parameter is irrelevant.
         """
+        
         if self.niiDWI is None :
             ERROR( 'Data not loaded; call "load_data()" first' )
 
@@ -405,24 +400,30 @@ cdef class Evaluation :
         # ------------------------
         print( '\t* Segments from the tracts... ', end='' )
         sys.stdout.flush()
+    
+        cdef int t_used = dictionary_info['threads']
 
         self.DICTIONARY['TRK'] = {}
-        self.DICTIONARY['TRK']['kept']   = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_kept.dict'), dtype=np.uint8 )
-        self.DICTIONARY['TRK']['norm']   = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_norm.dict'), dtype=np.float32 )
-        self.DICTIONARY['TRK']['len']    = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_len.dict'), dtype=np.float32 )
-        self.DICTIONARY['TRK']['lenTot'] = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_lenTot.dict'), dtype=np.float32 )
 
+        self.DICTIONARY['TRK']['kept']   = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_kept_{i}.dict'), dtype=np.uint8 ) for i in range( t_used ) ]  )
+        self.DICTIONARY['TRK']['norm']   = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_norm_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
+        self.DICTIONARY['TRK']['len']    = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_len_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
+        self.DICTIONARY['TRK']['lenTot'] = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_lenTot_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
 
         self.DICTIONARY['IC'] = {}
-        self.DICTIONARY['IC']['fiber'] = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_f.dict'), dtype=np.uint32 )
-        self.DICTIONARY['IC']['v']     = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_v.dict'), dtype=np.uint32 )
-        self.DICTIONARY['IC']['o']     = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_o.dict'), dtype=np.uint16 )
-        self.DICTIONARY['IC']['len']   = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_len.dict'), dtype=np.float32 )
+
+        self.DICTIONARY['IC']['fiber'] = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_f_{i}.dict'), dtype=np.uint32 ) for i in range( t_used ) ] )
+        self.DICTIONARY['IC']['v']     = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_v_{i}.dict'), dtype=np.uint32 ) for i in range( t_used ) ] )
+        self.DICTIONARY['IC']['o']     = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_o_{i}.dict'), dtype=np.uint16 ) for i in range( t_used ) ] )
+        self.DICTIONARY['IC']['len']   = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_len_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
+        
         self.DICTIONARY['IC']['n']     = self.DICTIONARY['IC']['fiber'].size
         self.DICTIONARY['IC']['nF']    = self.DICTIONARY['TRK']['norm'].size
 
+
         # reorder the segments based on the "v" field
         idx = np.argsort( self.DICTIONARY['IC']['v'], kind='mergesort' )
+
         self.DICTIONARY['IC']['v']     = self.DICTIONARY['IC']['v'][ idx ]
         self.DICTIONARY['IC']['o']     = self.DICTIONARY['IC']['o'][ idx ]
         self.DICTIONARY['IC']['fiber'] = self.DICTIONARY['IC']['fiber'][ idx ]
@@ -435,12 +436,14 @@ cdef class Evaluation :
             np.float32_t [:] sl = self.DICTIONARY['IC']['len']
             np.float32_t [:] tl = self.DICTIONARY['TRK']['norm']
             np.uint32_t  [:] f  = self.DICTIONARY['IC']['fiber']
-            int s
+            int s             
+
         if self.get_config('doNormalizeKernels') :
             for s in xrange(self.DICTIONARY['IC']['n']) :
                 sl[s] /= tl[ f[s] ]
 
         print( '[ %d fibers and %d segments ]' % ( self.DICTIONARY['IC']['nF'], self.DICTIONARY['IC']['n'] ) )
+
 
         # segments from the peaks
         # -----------------------
@@ -454,6 +457,7 @@ cdef class Evaluation :
 
         # reorder the segments based on the "v" field
         idx = np.argsort( self.DICTIONARY['EC']['v'], kind='mergesort' )
+
         self.DICTIONARY['EC']['v'] = self.DICTIONARY['EC']['v'][ idx ]
         self.DICTIONARY['EC']['o'] = self.DICTIONARY['EC']['o'][ idx ]
         del idx
@@ -506,7 +510,6 @@ cdef class Evaluation :
 
     def set_threads( self, n=None ) :
         """Set the number of threads to use for the matrix-vector operations with A and A'.
-
         Parameters
         ----------
         n : integer
@@ -657,7 +660,6 @@ cdef class Evaluation :
         using the informations from self.DICTIONARY, self.KERNELS and self.THREADS.
         NB: needs to call this function to update pointers to data structures in case
             the data is changed in self.DICTIONARY, self.KERNELS or self.THREADS.
-
         Parameters
         ----------
         build_dir : string
@@ -742,7 +744,6 @@ cdef class Evaluation :
 
     def fit( self, tol_fun=1e-3, tol_x=1e-6, max_iter=100, verbose=True, x0=None, regularisation=None, confidence_map_filename=None, confidence_map_rescale=False ) :
         """Fit the model to the data.
-
         Parameters
         ----------
         tol_fun : float
@@ -876,7 +877,6 @@ cdef class Evaluation :
         Returns the coefficients estimated from the tractogram passed to trk2dictionary.run(). These coefficients are divided in three
         classes (ic, ec, iso) and correspond to the 'original optimization problem', so if preconditioning was applied via the option
         'doNormalizeKernels', then they are re-scaled accordingly. This behaviour can be overridden using the 'get_normalized' parameter.
-
         Parameters
         ----------
         get_normalized : boolean
@@ -913,7 +913,6 @@ cdef class Evaluation :
 
     def save_results( self, path_suffix=None, coeffs_format='%.5e', stat_coeffs='sum', save_est_dwi=False ) :
         """Save the output (coefficients, errors, maps etc).
-
         Parameters
         ----------
         path_suffix : string
