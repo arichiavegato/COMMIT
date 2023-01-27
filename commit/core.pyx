@@ -405,17 +405,17 @@ cdef class Evaluation :
 
         self.DICTIONARY['TRK'] = {}
 
-        self.DICTIONARY['TRK']['kept']   = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_kept_{i}.dict'), dtype=np.uint8 ) for i in range( t_used ) ]  )
-        self.DICTIONARY['TRK']['norm']   = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_norm_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
-        self.DICTIONARY['TRK']['len']    = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_len_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
-        self.DICTIONARY['TRK']['lenTot'] = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_TRK_lenTot_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
+        self.DICTIONARY['TRK']['kept']   = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_kept.dict'), dtype=np.uint8 )
+        self.DICTIONARY['TRK']['norm']   = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_norm.dict'), dtype=np.float32 )
+        self.DICTIONARY['TRK']['len']    = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_len.dict'), dtype=np.float32 )
+        self.DICTIONARY['TRK']['lenTot'] = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_TRK_lenTot.dict'), dtype=np.float32 )
 
         self.DICTIONARY['IC'] = {}
 
-        self.DICTIONARY['IC']['fiber'] = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_f_{i}.dict'), dtype=np.uint32 ) for i in range( t_used ) ] )
-        self.DICTIONARY['IC']['v']     = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_v_{i}.dict'), dtype=np.uint32 ) for i in range( t_used ) ] )
-        self.DICTIONARY['IC']['o']     = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_o_{i}.dict'), dtype=np.uint16 ) for i in range( t_used ) ] )
-        self.DICTIONARY['IC']['len']   = np.concatenate( [ np.fromfile( pjoin(self.get_config('TRACKING_path'),f'dictionary_IC_len_{i}.dict'), dtype=np.float32 ) for i in range( t_used ) ] )
+        self.DICTIONARY['IC']['fiber'] = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_f.dict'), dtype=np.uint32 )
+        self.DICTIONARY['IC']['v']     = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_v.dict'), dtype=np.uint32 )
+        self.DICTIONARY['IC']['o']     = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_o.dict'), dtype=np.uint16 )
+        self.DICTIONARY['IC']['len']   = np.fromfile( pjoin(self.get_config('TRACKING_path'),'dictionary_IC_len.dict'), dtype=np.float32 )
         
         self.DICTIONARY['IC']['n']     = self.DICTIONARY['IC']['fiber'].size
         self.DICTIONARY['IC']['nF']    = self.DICTIONARY['TRK']['norm'].size
