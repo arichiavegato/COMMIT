@@ -82,7 +82,9 @@ vector<unsigned int>    totICSegments( MAX_THREADS, 0 );    // originally as tot
 vector<unsigned int>    totFibers( MAX_THREADS, 0 );
 
 mutex m;
+
 // unsigned int totICSegments, totFibers;
+// FILE *ptrTDIfile = fopen("/home/arianna/Scrivania/Data/ptrTDI_values.txt", "a");
 
 
 // --- Functions Definitions ----
@@ -91,10 +93,11 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, int nRepl
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w, short* ptrHashTable);
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN], int ns, int np );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] , float* toVOXMM );
- 
+
 int ICSegments( char* str_filename, int isTRK, int n_count, int nReplicas, int n_scalars, int n_properties, float* ptrToVOXMM,
-float* ptrTDI, double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
+float* ptrTDI , double* ptrBlurRho, double* ptrBlurAngle, double* ptrBlurWeights, bool* ptrBlurApplyTo, short* ptrHashTable, char* path_out, 
 unsigned long long int offset, int idx, unsigned int startpos, unsigned int endpos ); 
+
 
 
 // ===========================================
@@ -207,7 +210,7 @@ int trk2dictionary(
     
     for( int i = 0; i<threads_count; i++ ){
         threads.push_back( thread( ICSegments, str_filename, isTRK, n_count, nReplicas, n_scalars, n_properties, ptrToVOXMM,
-        ptrTDI, ptrBlurRho, ptrBlurAngle, ptrBlurWeights, ptrBlurApplyTo, ptrHashTable, path_out, offset_values[i], 
+        ptrTDI , ptrBlurRho, ptrBlurAngle, ptrBlurWeights, ptrBlurApplyTo, ptrHashTable, path_out, offset_values[i], 
         i, StartPos[i], StartPos[i+1]  ) );
     }
 
@@ -216,6 +219,9 @@ int trk2dictionary(
     }
 
     printf( "     [ %d streamlines kept, %d segments in total ]\n", totFibers[threads_count-1], std::accumulate( totICSegments.begin(), totICSegments.end(), 0) );
+
+
+    // fclose( ptrTDIfile );
 
 
     // ------- EC Compartments -------
@@ -389,15 +395,16 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
 
         kept = 0;
 
+        
         /*
         // Check the keys values
         // ===========================================
         m.lock();
         for(it=FiberSegments.begin(); it!=FiberSegments.end(); it++){
-            cout << idx << "\t" << it->first.x << "\t" << it->first.y << "\t" << it->first.z << "\n";
+            cout << it->second << endl;
         }
         m.unlock();
-        // ===========================================
+        // ==========================================
         */
 
         if ( FiberSegments.size() > 0 )
@@ -409,18 +416,28 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
                 {
                     // NB: plese note inverted ordering for 'v'
                     v = it->first.x + dim.x * ( it->first.y + dim.y * it->first.z );
-                    o = it->first.o;
-                    
+                    o = it->first.o;       
+            
                     fwrite( &sumFibers,      4, 1, pDict_IC_f );
                     fwrite( &v,              4, 1, pDict_IC_v );
                     fwrite( &o,              2, 1, pDict_IC_o );
-                    fwrite( &(it->second),   4, 1, pDict_IC_len );
+                    fwrite( &(it->second),   4, 1, pDict_IC_len );       
                     
+                    m.lock();
                     ptrTDI[ it->first.z + dim.z * ( it->first.y + dim.y * it->first.x ) ] += it->second;
+                    m.unlock();
+
+                    /*
+                    m.lock();
+                    fprintf( ptrTDIfile, "%f\n", ptrTDI[ it->first.z + dim.z * ( it->first.y + dim.y * it->first.x ) ] );
+                    //cout << ptrTDI[ it->first.z + dim.z * ( it->first.y + dim.y * it->first.x ) ] << endl;
+                    m.unlock();
+                    */
 
                     inVoxKey.set( it->first.x, it->first.y, it->first.z );
                     FiberNorm[inVoxKey] += it->second;
                 }
+
 
                 for (fiberNorm=0, itNorm=FiberNorm.begin(); itNorm!=FiberNorm.end(); itNorm++)
                     fiberNorm += pow(itNorm->second,2);
@@ -443,6 +460,8 @@ unsigned long long int offset, int idx, unsigned int startpos, unsigned int endp
 
         fwrite( &kept, 1, 1, pDict_TRK_kept );
     }
+
+    //cout << sizeof( ptrTDI ) << endl;
 
     fclose( fpTractogram1 );
 

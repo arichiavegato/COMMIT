@@ -13,6 +13,7 @@ import pickle
 from amico.util import LOG, NOTE, WARNING, ERROR
 from pkg_resources import get_distribution
 import multiprocessing
+import shutil
 
 from libcpp cimport bool
 
@@ -32,6 +33,16 @@ def _get_header( niiFILE ):
 
 def _get_affine( niiFILE ):
     return niiFILE.affine if nibabel.__version__ >= '2.0.0' else niiFILE.get_affine()
+
+
+cpdef cat_function( infilename, outfilename ):
+ """ Concatenate binary file """
+ 
+ with open( outfilename, "ab" ) as outFile:
+     with open( infilename, "rb" ) as inFile:
+         shutil.copyfileobj( inFile, outFile )
+         remove( infilename )
+
 
 cpdef run( filename_tractogram=None, path_out=None, filename_peaks=None, filename_mask=None, do_intersect=True,
     fiber_shift=0, min_seg_len=1e-3, min_fiber_len=0.0, max_fiber_len=250.0,
@@ -460,6 +471,52 @@ cpdef run( filename_tractogram=None, path_out=None, filename_peaks=None, filenam
     niiMASK_hdr = _get_header( niiMASK )
     niiMASK_hdr['descrip'] = niiTDI_hdr['descrip']
     nibabel.save( niiMASK, join(path_out,'dictionary_mask.nii.gz') )
+
+
+
+    # Concatenate files together
+    cdef int j 
+
+    fileout = path_out + '/dictionary_TRK_kept.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_TRK_kept_{j}.dict', fileout )
+
+    fileout = path_out + '/dictionary_TRK_norm.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_TRK_norm_{j}.dict', fileout )
+
+    fileout = path_out + '/dictionary_TRK_len.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_TRK_len_{j}.dict', fileout )
+
+    fileout = path_out + '/dictionary_TRK_lenTot.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_TRK_lenTot_{j}.dict', fileout )
+
+    fileout = path_out + '/dictionary_IC_f.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_IC_f_{j}.dict', fileout )
+
+    fileout = path_out + '/dictionary_IC_v.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_IC_v_{j}.dict', fileout )
+
+    fileout = path_out + '/dictionary_IC_o.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_IC_o_{j}.dict', fileout )
+    
+    fileout = path_out + '/dictionary_IC_len.dict'
+    for j in range(threads):
+        cat_function( path_out+f'/dictionary_IC_len_{j}.dict', fileout )
+
+
+#    fileout = path_out + '/dictionary_IC_len.dict'
+#    with open( fileout, "ab" ) as out:
+#        for j in range(threads):
+#            with open(path_out+f'/dictionary_IC_len_{j}.dict', "rb") as IClen:
+#                shutil.copyfileobj( IClen, out )
+#                remove( path_out+f'/dictionary_IC_len_{j}.dict' )
+
 
 
     LOG( f'\n   [ {time.time() - tic:.1f} seconds ]' )
