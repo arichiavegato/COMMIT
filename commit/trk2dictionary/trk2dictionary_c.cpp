@@ -189,9 +189,12 @@ int trk2dictionary(
 
     OffsetArr[0] = ftell( fpTractogram );
 
-    // .trk needs to be tested
+    // Check the number of streamlines ( IC ) for .Trk
+    // Number of segments IC - OK
+    // Streamlines and segments for EC - OK
     if(isTRK) {
 
+        /*
         fread( (char*)&N, 1, 4, fpTractogram ); // read the number of points in each streamline
         if( N >= MAX_FIB_LEN || N <= 0 ) return 0;   // check
 
@@ -211,7 +214,7 @@ int trk2dictionary(
                 if( f == Pos[i] ) 
                     OffsetArr[i] = current;
             }           
-        }
+        }*/
 
 
     } else {
