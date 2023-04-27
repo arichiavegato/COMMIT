@@ -35,9 +35,8 @@ def _get_affine( niiFILE ):
     return niiFILE.affine if nibabel.__version__ >= '2.0.0' else niiFILE.get_affine()
 
 
-cpdef cat_function( infilename, outfilename ):
+def cat_function( infilename, outfilename ):
  """ Concatenate binary file """
- 
  with open( outfilename, "ab" ) as outFile:
      with open( infilename, "rb" ) as inFile:
          shutil.copyfileobj( inFile, outFile )
@@ -448,6 +447,9 @@ cpdef run( filename_tractogram=None, path_out=None, filename_peaks=None, filenam
     if ret == 0 :
         WARNING( 'DICTIONARY not generated' )
         return None
+    
+    #test
+    #print( list(niiTDI_img[:, :, ::1]) )
 
     # save TDI and MASK maps
     if TCK_ref_image is not None:
@@ -473,50 +475,32 @@ cpdef run( filename_tractogram=None, path_out=None, filename_peaks=None, filenam
     nibabel.save( niiMASK, join(path_out,'dictionary_mask.nii.gz') )
 
 
-
     # Concatenate files together
     cdef int j 
+    cdef int zero = 0
+    cdef int incr = 1
 
-    fileout = path_out + '/dictionary_TRK_kept.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_TRK_kept_{j}.dict', fileout )
+    fileout_TRKkept = path_out + '/dictionary_TRK_kept.dict'
+    fileout_TRKnorm = path_out + '/dictionary_TRK_norm.dict'
+    fileout_TRKlen = path_out + '/dictionary_TRK_len.dict'
+    fileout_TRKlenTot = path_out + '/dictionary_TRK_lenTot.dict'
+    fileout_f = path_out + '/dictionary_IC_f.dict'
+    fileout_v = path_out + '/dictionary_IC_v.dict'
+    fileout_o = path_out + '/dictionary_IC_o.dict'
+    fileout_len = path_out + '/dictionary_IC_len.dict'
 
-    fileout = path_out + '/dictionary_TRK_norm.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_TRK_norm_{j}.dict', fileout )
 
-    fileout = path_out + '/dictionary_TRK_len.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_TRK_len_{j}.dict', fileout )
-
-    fileout = path_out + '/dictionary_TRK_lenTot.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_TRK_lenTot_{j}.dict', fileout )
-
-    fileout = path_out + '/dictionary_IC_f.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_IC_f_{j}.dict', fileout )
-
-    fileout = path_out + '/dictionary_IC_v.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_IC_v_{j}.dict', fileout )
-
-    fileout = path_out + '/dictionary_IC_o.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_IC_o_{j}.dict', fileout )
+    for j in range(zero, threads, incr):
+        cat_function( path_out+f'/dictionary_TRK_kept_{j}.dict', fileout_TRKkept )
+        cat_function( path_out+f'/dictionary_TRK_norm_{j}.dict', fileout_TRKnorm )
+        cat_function( path_out+f'/dictionary_TRK_len_{j}.dict', fileout_TRKlen )
+        cat_function( path_out+f'/dictionary_TRK_lenTot_{j}.dict', fileout_TRKlenTot )
+        cat_function( path_out+f'/dictionary_IC_f_{j}_new.dict', fileout_f )
+        cat_function( path_out+f'/dictionary_IC_v_{j}.dict', fileout_v )
+        cat_function( path_out+f'/dictionary_IC_o_{j}.dict', fileout_o )
+        cat_function( path_out+f'/dictionary_IC_len_{j}.dict', fileout_len )
     
-    fileout = path_out + '/dictionary_IC_len.dict'
-    for j in range(threads):
-        cat_function( path_out+f'/dictionary_IC_len_{j}.dict', fileout )
-
-
-#    fileout = path_out + '/dictionary_IC_len.dict'
-#    with open( fileout, "ab" ) as out:
-#        for j in range(threads):
-#            with open(path_out+f'/dictionary_IC_len_{j}.dict', "rb") as IClen:
-#                shutil.copyfileobj( IClen, out )
-#                remove( path_out+f'/dictionary_IC_len_{j}.dict' )
-
-
+    
+        
 
     LOG( f'\n   [ {time.time() - tic:.1f} seconds ]' )
