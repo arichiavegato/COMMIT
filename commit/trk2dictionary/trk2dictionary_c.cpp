@@ -17,6 +17,7 @@
 #define MAX_THREADS 255
 
 
+
 // Check for results
 #define checkResults( string, val ){                        \
     if( val ) {                                             \
@@ -26,7 +27,9 @@
 }                                                           \
 
 
+
 using namespace std;
+
 
 
 // class to store the segments of one fiber
@@ -72,7 +75,6 @@ class segInVoxKey
 
 
 
-
 // Global variables (to avoid passing them at each call)
 thread_local map<segKey,float>               FiberSegments;
 thread_local float                           FiberLen;      // length of a streamline
@@ -94,7 +96,6 @@ bool            *ptrBlurApplyTo;
 short           *ptrHashTable;
 
 
-// Structure Parameters
 typedef struct {
     int                             idx;
     long                            offset;
@@ -113,7 +114,7 @@ void fiberForwardModel( float fiber[3][MAX_FIB_LEN], unsigned int pts, bool doAp
 void segmentForwardModel( const Vector<double>& P1, const Vector<double>& P2, int k, double w );
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN] );
 unsigned int read_fiberTCK( FILE* fp, float fiber[3][MAX_FIB_LEN] );
-void *ICSegments( void *parm ) ;
+void *ICSegments( void *parm ) ; // POSIX function
 
 
 
@@ -160,16 +161,14 @@ int trk2dictionary(
     ptrHashTable    = _ptrHashTable;
 
 
-
     printf("\n   \033[0;32m* %d concurrent threads are supported\n ", threads_count ); 
 
 
-
-    StructVec Parameters;   // Vector of structurs Parameters, one for each thread
+    StructVec Parameters;
     Parameters.resize(threads_count,{0});
 
 
-    // Compute the batch size for each thread
+    // Compute the batch size and start position
     // ------------------------------------------------------
     int batch_size[threads_count] = {0};
 
@@ -179,8 +178,6 @@ int trk2dictionary(
     } 
 
 
-    // Compute the starting position
-    // ------------------------------------------------------
     Parameters[0].pos[0] = 0;
     Parameters[0].pos[1] = batch_size[0];
     unsigned int prev = batch_size[0];
@@ -195,7 +192,7 @@ int trk2dictionary(
     }
 
 
-    // Check the file extension and set the global variable
+    // Check the file extension
     // ------------------------------------------------------
     char *ext = strrchr(str_filename, '.');
     if (strcmp(ext,".trk")==0) // for .trk file
@@ -206,12 +203,11 @@ int trk2dictionary(
         return 0;    
 
 
-    // Open tractogram file and compute the offset for each thread
+    // Compute the offset for each thread
     // ------------------------------------------------------
     long current;
-    int f = 0;
+    int N, f = 0;
     float Buff[3];
-    int N;
 
     FILE* fpTractogram = fopen(str_filename,"rb");
     if (fpTractogram == NULL) return 0;
@@ -221,15 +217,13 @@ int trk2dictionary(
     Parameters[0].offset = ftell(fpTractogram);
 
     if(isTRK) {
-
         while( f != n_count ){
-            
+        
             fread( (char*)&N, 1, 4, fpTractogram );
             fseek( fpTractogram,((3+n_scalars)*4)*N, SEEK_CUR ); 	
-            fseek(fpTractogram,4*n_properties,SEEK_CUR);
+            fseek( fpTractogram,4*n_properties,SEEK_CUR );
 
             current = ftell(fpTractogram);
-
             f++;
 
             for( int j = 0; j<threads_count; j++){
@@ -237,11 +231,9 @@ int trk2dictionary(
                     Parameters[j].offset = current;
                 }
             }
-
         }
 
     } else {
-
         while( f != n_count ) {
             fread((char*)Buff, 1, 12, fpTractogram );
 
@@ -261,53 +253,53 @@ int trk2dictionary(
 
 
 
-
-    // ------- IC Compartments -------
-
-    printf( "\n   \033[0;32m* Exporting IC compartments:\033[0m\n" );
-
-
+    // Compute IC compartments
+    // ------------------------------------------------------
     int rc = 0;
     unsigned int segments = 0, fibers = 0;
     pthread_t threads[threads_count];
     StructVec::iterator parms_it;
     
+    
+    printf( "\n   \033[0;32m* Exporting IC compartments:\033[0m\n" ); 
+    
+    
+    // Calling POSIX function
     for( int i = 0; i<threads_count; i++) {
         Parameters[i].idx = i;
         rc = pthread_create( &threads[i], NULL, ICSegments, &Parameters[i] );    // Actual call to POSIX function
         checkResults("\npthread_create()\n", rc);
     }
 
+    // Threads sync.
     for( int i = 0; i<threads_count; i++ ){
         rc = pthread_join( threads[i], NULL );
         checkResults("\nptherad_join()\n", rc);
     }
 
+    // Compute the total number of the elaborated fibers ( and segments )
     for( parms_it=Parameters.begin(); parms_it!=Parameters.end(); parms_it++ ){
         segments += parms_it->totICSegments;
         fibers += parms_it->totFibers;
     }
 
-    printf( "     [ %d streamlines kept, %d segments in total ]\n", fibers, segments );
 
-
-
-    // Adjusting the indexes
-    // -------------------------------
+    // Indexes' adjustment
+    // ------------------------------------------------------
     string    filename;
     string    OUTPUT_path(path_out);
+    int       num, towrite;
+    int       add[threads_count] = {0} ;
 
-    int num, towrite;
-    int add[threads_count] = {0} ;
 
     for( int i=1; i<threads_count; i++ ){
-        add[i] = ( Parameters[i-1].totFibers + add[i-1] ) ;
+        add[i] = ( Parameters[i-1].totFibers + add[i-1] );
     }
 
     for( int i=0; i<threads_count; i++ ) {
        
         string forigin = OUTPUT_path+"/dictionary_IC_f_" + std::to_string(i) + ".dict";      FILE* fo     = fopen(forigin.c_str(), "rb");
-        string fout = OUTPUT_path+"/dictionary_IC_f_" + std::to_string(i) + "_new.dict";    FILE* fnew   = fopen(fout.c_str(),"wb");
+        string fout = OUTPUT_path+"/dictionary_IC_f_" + std::to_string(i) + "_new.dict";     FILE* fnew   = fopen(fout.c_str(),"wb");
 
         for( int j = 0; j<Parameters[i].totICSegments; j++) {
             fread( &num, sizeof(int), 1, fo );
@@ -324,21 +316,22 @@ int trk2dictionary(
     }
 
 
+    printf( "     [ %d streamlines kept, %d segments in total ]\n", fibers, segments );
 
 
-    // ------- EC Compartments -------
 
-    // EC variables
+    // Compute EC compartments
+    // ------------------------------------------------------
     unsigned short o;
     unsigned int v;
     unsigned int totECSegments = 0, totECVoxels = 0;    
 
-    printf( "\n   \033[0;32m* Exporting EC compartments:\033[0m\n" );
-
-    // Results' files
-    // ------------------------------------------------------
     filename = OUTPUT_path+"/dictionary_EC_v.dict";        FILE* pDict_EC_v   = fopen( filename.c_str(),   "wb" );
     filename = OUTPUT_path+"/dictionary_EC_o.dict";        FILE* pDict_EC_o   = fopen( filename.c_str(),   "wb" );  
+
+
+    printf( "\n   \033[0;32m* Exporting EC compartments:\033[0m\n" );
+    
 
     if ( ptrPEAKS != NULL )
     {
@@ -435,15 +428,11 @@ int trk2dictionary(
 
 
 /********************************************************************************************************************/
-/*                                            Parallel IC compartments                                              */
+/*                                                POSIX ICSegments                                                  */
 /********************************************************************************************************************/
 
 void *ICSegments( void *parm ) {
-
-    threadparm_t*   struct_parameters;
-    struct_parameters = ( threadparm_t* ) parm;
-
-    // Variables definition
+    
     float          fiber[3][MAX_FIB_LEN] = {0} ; 
     float          fiberNorm;   // normalization
     unsigned int   N, v, _totICSegments = 0, _totFibers = 0;
@@ -451,7 +440,7 @@ void *ICSegments( void *parm ) {
     unsigned char  kept;
     string    filename;        
     string    OUTPUT_path(path_out);
-
+    
     map<segKey,float>::iterator it;
     map<segInVoxKey,float> FiberNorm;
     map<segInVoxKey,float>::iterator itNorm;
@@ -459,13 +448,15 @@ void *ICSegments( void *parm ) {
     segInVoxKey inVoxKey; 
 
     P.resize(nReplicas);
+    
+    threadparm_t*   struct_parameters;
+    struct_parameters = ( threadparm_t* ) parm;    
 
     int idx;
     idx = struct_parameters -> idx;
 
 
-    // Results' files
-    // ------------------------------------------------------
+ 
     filename = OUTPUT_path+"/dictionary_TRK_norm_" + std::to_string(idx) + ".dict";   FILE* pDict_TRK_norm = fopen(filename.c_str(),"wb");
     
     if ( !pDict_TRK_norm )
@@ -563,7 +554,6 @@ void *ICSegments( void *parm ) {
     return NULL;
 
 }
-
 
 
 
@@ -870,7 +860,7 @@ bool rayBoxIntersection( Vector<double>& origin, Vector<double>& direction, Vect
 
 
 /********************************************************************************************************************/
-/*                                              Reading Functions                                                   */
+/*                                                  read_fibers                                                     */
 /********************************************************************************************************************/
 
 unsigned int read_fiberTRK( FILE* fp, float fiber[3][MAX_FIB_LEN] )
