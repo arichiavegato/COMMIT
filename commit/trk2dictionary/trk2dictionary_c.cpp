@@ -160,11 +160,11 @@ int trk2dictionary(
     ptrBlurApplyTo  = _ptrBlurApplyTo;
     ptrHashTable    = _ptrHashTable;
 
-    if( threads_count == 1 )
-        printf( "\n   \033[0;32m* Sequential Exec. \n " )
-    else
+    if( threads_count == 1 ){
+        printf( "\n   \033[0;32m* Sequential Exec. \n " );
+    }else{
         printf( "\n   \033[0;32m* Multi-thread Exec. %d threads will be used.\n ", threads_count ); 
-
+    }
 
     StructVec Parameters;
     Parameters.resize(threads_count,{0});
